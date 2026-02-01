@@ -4,7 +4,7 @@
   "description": "TUI installer for Clawtrics",
   "type": "module",
   "bin": {
-    "clawtrics": "./dist/cli.js"
+    "clawtrics-installer": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
