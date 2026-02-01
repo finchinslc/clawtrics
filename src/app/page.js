@@ -329,6 +329,75 @@ function SlowestRuns({ runs, theme, tooltip }) {
   );
 }
 
+function ThinkingBreakdown({ metrics, theme }) {
+  const t = themes[theme];
+  const { thinkingModes = {}, thinkingAvgDurations = {}, totalRuns = 0 } = metrics || {};
+  
+  // Order: off, low, medium, high
+  const modeOrder = ['off', 'low', 'medium', 'high'];
+  const modeColors = {
+    off: t.textMuted,
+    low: t.accentGreen,
+    medium: t.accentYellow,
+    high: t.accentOrange,
+  };
+  const modeEmojis = {
+    off: '⚪',
+    low: '🟢',
+    medium: '🟡',
+    high: '🟠',
+  };
+  
+  const modes = modeOrder.filter(m => thinkingModes[m] > 0);
+  
+  if (modes.length === 0) {
+    return null;
+  }
+  
+  return (
+    <div style={{
+      backgroundColor: t.card,
+      borderRadius: '8px',
+      padding: '12px 16px',
+      border: `1px solid ${t.border}`,
+    }}>
+      <div style={{ color: t.textMuted, fontSize: '11px', marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
+        🧠 Thinking Mode
+        <InfoIcon tooltip="Distribution of reasoning levels and their average run durations." theme={theme} />
+      </div>
+      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+        {modes.map(mode => {
+          const count = thinkingModes[mode] || 0;
+          const pct = totalRuns > 0 ? ((count / totalRuns) * 100).toFixed(0) : 0;
+          const avgDuration = thinkingAvgDurations[mode] || 0;
+          
+          return (
+            <div key={mode} style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center',
+              minWidth: '70px',
+            }}>
+              <div style={{ fontSize: '10px', color: t.textMuted, marginBottom: '4px' }}>
+                {modeEmojis[mode]} {mode}
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 'bold', color: modeColors[mode] }}>
+                {pct}%
+              </div>
+              <div style={{ fontSize: '9px', color: t.textMuted }}>
+                {count} runs
+              </div>
+              <div style={{ fontSize: '10px', color: t.text, marginTop: '2px' }}>
+                ~{formatDuration(avgDuration)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ContextPressure({ metrics, theme }) {
   const t = themes[theme];
   const { compactionCount = 0, totalEstimatedTokens = 0, avgEstimatedTokens = 0, heavySessions = 0, runsWithCompaction = 0, totalRuns = 0 } = metrics || {};
@@ -815,9 +884,14 @@ export default function Home() {
         />
       </div>
       
-      {/* Context Pressure */}
-      <div style={{ marginBottom: '12px' }}>
-        <ContextPressure metrics={metrics} theme={theme} />
+      {/* Context Pressure + Thinking Mode */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+        <div style={{ flex: 1 }}>
+          <ContextPressure metrics={metrics} theme={theme} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <ThinkingBreakdown metrics={metrics} theme={theme} />
+        </div>
       </div>
       
       {/* Charts Row 1: Tools + Models */}

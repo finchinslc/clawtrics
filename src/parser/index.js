@@ -311,6 +311,22 @@ function parseLogFile(filePath) {
   const totalEstimatedTokens = runs.reduce((sum, r) => sum + (r.estimatedTokens || 0), 0);
   const heavySessions = [...compactionsBySession.values()].filter(c => c >= 3).length;
   
+  // Thinking mode stats
+  const thinkingModes = {};
+  const thinkingDurations = {};
+  runs.forEach(run => {
+    const mode = run.thinking || 'off';
+    thinkingModes[mode] = (thinkingModes[mode] || 0) + 1;
+    if (!thinkingDurations[mode]) thinkingDurations[mode] = [];
+    thinkingDurations[mode].push(run.durationMs);
+  });
+  
+  // Calculate average duration per thinking mode
+  const thinkingAvgDurations = {};
+  for (const [mode, durations] of Object.entries(thinkingDurations)) {
+    thinkingAvgDurations[mode] = durations.reduce((a, b) => a + b, 0) / durations.length;
+  }
+  
   return {
     runs,
     tools,
@@ -319,6 +335,8 @@ function parseLogFile(filePath) {
     models,
     providers,
     channels,
+    thinkingModes,
+    thinkingAvgDurations,
     sessionCount: sessions.size,
     totalRuns: runs.length,
     totalDurationMs,
@@ -413,9 +431,11 @@ function parseAllLogs(options = {}) {
     totalEstimatedTokens: 0,
     heavySessions: 0,
     runsWithCompaction: 0,
+    thinkingModes: {},
   };
   
   const allDurations = [];
+  const thinkingDurationsByMode = {};
   
   for (const [date, metrics] of Object.entries(dailyMetrics)) {
     totals.totalRuns += metrics.totalRuns;
@@ -427,7 +447,16 @@ function parseAllLogs(options = {}) {
     totals.heavySessions += metrics.heavySessions;
     totals.runsWithCompaction += metrics.runsWithCompaction;
     
-    metrics.runs.forEach(r => allDurations.push(r.durationMs));
+    metrics.runs.forEach(r => {
+      allDurations.push(r.durationMs);
+      const mode = r.thinking || 'off';
+      if (!thinkingDurationsByMode[mode]) thinkingDurationsByMode[mode] = [];
+      thinkingDurationsByMode[mode].push(r.durationMs);
+    });
+    
+    for (const [mode, count] of Object.entries(metrics.thinkingModes || {})) {
+      totals.thinkingModes[mode] = (totals.thinkingModes[mode] || 0) + count;
+    }
     
     for (const [tool, count] of Object.entries(metrics.tools)) {
       totals.tools[tool] = (totals.tools[tool] || 0) + count;
@@ -447,6 +476,12 @@ function parseAllLogs(options = {}) {
     for (const [channel, count] of Object.entries(metrics.channels)) {
       totals.channels[channel] = (totals.channels[channel] || 0) + count;
     }
+  }
+  
+  // Calculate average duration per thinking mode
+  totals.thinkingAvgDurations = {};
+  for (const [mode, durations] of Object.entries(thinkingDurationsByMode)) {
+    totals.thinkingAvgDurations[mode] = durations.reduce((a, b) => a + b, 0) / durations.length;
   }
   
   allDurations.sort((a, b) => a - b);
