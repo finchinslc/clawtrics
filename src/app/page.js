@@ -269,7 +269,7 @@ function ToolChains({ chains, theme, tooltip }) {
   const t = themes[theme];
   const topChains = Object.entries(chains || {})
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+    .slice(0, 3);
   
   return (
     <div style={{
@@ -301,7 +301,7 @@ function SlowestRuns({ runs, theme, tooltip }) {
   const t = themes[theme];
   const slowest = [...(runs || [])]
     .sort((a, b) => b.durationMs - a.durationMs)
-    .slice(0, 5);
+    .slice(0, 3);
   
   return (
     <div style={{
@@ -654,7 +654,7 @@ function RecentSessions({ runs, theme, onSessionClick, tooltip }) {
   
   const sessions = [...sessionMap.values()]
     .sort((a, b) => (b.lastTime || '').localeCompare(a.lastTime || ''))
-    .slice(0, 5);
+    .slice(0, 3);
   
   return (
     <div style={{
