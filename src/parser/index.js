@@ -107,20 +107,7 @@ function getModelPricing(modelName) {
   return DEFAULT_PRICING;
 }
 
-/**
- * Calculate cost for a run based on estimated tokens
- * Assumes roughly 30% input tokens, 70% output tokens (typical for agent runs)
- */
-function calculateRunCost(estimatedTokens, modelName) {
-  const pricing = getModelPricing(modelName);
-  const inputTokens = estimatedTokens * 0.3;
-  const outputTokens = estimatedTokens * 0.7;
-  
-  const inputCost = (inputTokens / 1_000_000) * pricing.input;
-  const outputCost = (outputTokens / 1_000_000) * pricing.output;
-  
-  return inputCost + outputCost;
-}
+// NOTE: calculateRunCost removed - cost estimation disabled until OpenClaw logs actual token usage
 
 /**
  * Extract the base command from a shell command string
@@ -254,7 +241,6 @@ function parseLogFile(filePath) {
           }, 0);
           
           const modelName = startInfo.model || 'unknown';
-          const estimatedCost = calculateRunCost(estimatedTokens, modelName);
           
           const run = {
             runId,
@@ -268,7 +254,6 @@ function parseLogFile(filePath) {
             thinking: startInfo.thinking || 'off',
             tools: toolsList,
             estimatedTokens,
-            estimatedCost,
             compactions: compactionsByRun.get(runId) || 0,
           };
           
@@ -324,7 +309,6 @@ function parseLogFile(filePath) {
   const minDurationMs = runs.length > 0 ? Math.min(...durations) : 0;
   
   const totalEstimatedTokens = runs.reduce((sum, r) => sum + (r.estimatedTokens || 0), 0);
-  const totalEstimatedCost = runs.reduce((sum, r) => sum + (r.estimatedCost || 0), 0);
   const heavySessions = [...compactionsBySession.values()].filter(c => c >= 3).length;
   
   return {
@@ -344,9 +328,7 @@ function parseLogFile(filePath) {
     abortedRuns: runs.filter(r => r.aborted).length,
     compactionCount,
     totalEstimatedTokens,
-    totalEstimatedCost,
     avgEstimatedTokens: runs.length > 0 ? totalEstimatedTokens / runs.length : 0,
-    avgEstimatedCost: runs.length > 0 ? totalEstimatedCost / runs.length : 0,
     heavySessions,
     runsWithCompaction: runs.filter(r => r.compactions > 0).length,
   };
@@ -429,7 +411,6 @@ function parseAllLogs(options = {}) {
     dailyMetrics,
     compactionCount: 0,
     totalEstimatedTokens: 0,
-    totalEstimatedCost: 0,
     heavySessions: 0,
     runsWithCompaction: 0,
   };
@@ -443,7 +424,6 @@ function parseAllLogs(options = {}) {
     totals.abortedRuns += metrics.abortedRuns;
     totals.compactionCount += metrics.compactionCount;
     totals.totalEstimatedTokens += metrics.totalEstimatedTokens;
-    totals.totalEstimatedCost += metrics.totalEstimatedCost || 0;
     totals.heavySessions += metrics.heavySessions;
     totals.runsWithCompaction += metrics.runsWithCompaction;
     
@@ -475,12 +455,6 @@ function parseAllLogs(options = {}) {
   totals.p95DurationMs = allDurations[Math.floor(allDurations.length * 0.95)] || 0;
   totals.maxDurationMs = allDurations[allDurations.length - 1] || 0;
   totals.avgEstimatedTokens = totals.totalRuns > 0 ? totals.totalEstimatedTokens / totals.totalRuns : 0;
-  totals.avgEstimatedCost = totals.totalRuns > 0 ? totals.totalEstimatedCost / totals.totalRuns : 0;
-  
-  // Calculate projected monthly cost based on daily average
-  const daysWithData = Object.keys(dailyMetrics).length;
-  const avgDailyCost = daysWithData > 0 ? totals.totalEstimatedCost / daysWithData : 0;
-  totals.projectedMonthlyCost = avgDailyCost * 30;
   
   return totals;
 }
@@ -659,4 +633,4 @@ Examples:
 `);
 }
 
-export { parseLogFile, getLogFiles, parseAllLogs, TOOL_TOKEN_ESTIMATES, extractBaseCommand, MODEL_PRICING, getModelPricing, calculateRunCost };
+export { parseLogFile, getLogFiles, parseAllLogs, TOOL_TOKEN_ESTIMATES, extractBaseCommand, MODEL_PRICING, getModelPricing };

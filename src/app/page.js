@@ -53,13 +53,6 @@ function formatTokens(tokens) {
   return `${(tokens / 1000).toFixed(1)}K`;
 }
 
-function formatCost(dollars) {
-  if (!dollars || dollars === 0) return '$0.00';
-  if (dollars < 0.01) return `$${(dollars * 100).toFixed(2)}¢`;
-  if (dollars < 1) return `$${dollars.toFixed(3)}`;
-  return `$${dollars.toFixed(2)}`;
-}
-
 // Info icon for inline help
 function InfoIcon({ tooltip, theme }) {
   const [show, setShow] = useState(false);
@@ -377,55 +370,6 @@ function ContextPressure({ metrics, theme }) {
   );
 }
 
-function CostEstimate({ metrics, theme }) {
-  const t = themes[theme];
-  const { 
-    totalEstimatedCost = 0, 
-    avgEstimatedCost = 0, 
-    projectedMonthlyCost = 0,
-    dailyMetrics = {}
-  } = metrics || {};
-  
-  // Get today's cost
-  const today = new Date().toISOString().split('T')[0];
-  const todayCost = dailyMetrics[today]?.totalEstimatedCost || 0;
-  
-  // Color based on projected monthly
-  const costColor = projectedMonthlyCost > 100 ? t.accent : projectedMonthlyCost > 50 ? t.accentYellow : t.accentGreen;
-  
-  return (
-    <div style={{
-      backgroundColor: t.card,
-      borderRadius: '8px',
-      padding: '12px 16px',
-      border: `1px solid ${t.border}`,
-    }}>
-      <div style={{ color: t.textMuted, fontSize: '11px', marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
-        💰 Cost Estimate
-        <InfoIcon tooltip="Rough estimates based on model pricing and estimated token counts. Actual costs may vary." theme={theme} />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatCost(todayCost)}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Today</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatCost(totalEstimatedCost)}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Total</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatCost(avgEstimatedCost)}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Avg/Run</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: costColor }}>{formatCost(projectedMonthlyCost)}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>~Monthly</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SessionModal({ session, runs, theme, onClose }) {
   const t = themes[theme];
   
@@ -433,7 +377,6 @@ function SessionModal({ session, runs, theme, onClose }) {
   
   const sessionRuns = runs.filter(r => r.sessionId === session.sessionId);
   const totalDuration = sessionRuns.reduce((sum, r) => sum + r.durationMs, 0);
-  const totalCost = sessionRuns.reduce((sum, r) => sum + (r.estimatedCost || 0), 0);
   const totalCompactions = sessionRuns.reduce((sum, r) => sum + (r.compactions || 0), 0);
   
   // Group tools across all runs
@@ -494,7 +437,7 @@ function SessionModal({ session, runs, theme, onClose }) {
         </div>
         
         {/* Summary Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.text }}>{sessionRuns.length}</div>
             <div style={{ fontSize: '10px', color: t.textMuted }}>Runs</div>
@@ -502,10 +445,6 @@ function SessionModal({ session, runs, theme, onClose }) {
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.text }}>{formatDuration(totalDuration)}</div>
             <div style={{ fontSize: '10px', color: t.textMuted }}>Duration</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.accentGreen }}>{formatCost(totalCost)}</div>
-            <div style={{ fontSize: '10px', color: t.textMuted }}>Cost</div>
           </div>
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: totalCompactions > 0 ? t.accentYellow : t.text }}>{totalCompactions}</div>
@@ -879,11 +818,6 @@ export default function Home() {
       {/* Context Pressure */}
       <div style={{ marginBottom: '12px' }}>
         <ContextPressure metrics={metrics} theme={theme} />
-      </div>
-      
-      {/* Cost Estimate */}
-      <div style={{ marginBottom: '12px' }}>
-        <CostEstimate metrics={metrics} theme={theme} />
       </div>
       
       {/* Charts Row 1: Tools + Models */}
