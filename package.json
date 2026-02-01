@@ -1,13 +1,16 @@
 {
   "name": "clawtrics",
-  "version": "0.1.0",
-  "description": "Metrics dashboard for OpenClaw - track token usage, speed, and performance",
+  "version": "0.2.0",
+  "description": "Metrics dashboard for OpenClaw - track run durations, tool usage, models, and more",
   "type": "module",
+  "bin": {
+    "clawtrics": "./cli.js"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "parse": "node src/parser/index.js"
+    "cli": "node src/parser/index.js"
   },
   "keywords": ["openclaw", "metrics", "dashboard", "ai", "tokens"],
   "author": "Finch",
