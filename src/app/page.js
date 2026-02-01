@@ -124,12 +124,13 @@ function StatCard({ title, value, tooltip, color, theme }) {
       padding: '12px 16px',
       border: `1px solid ${t.border}`,
       position: 'relative',
+      minWidth: '0',
     }}>
-      <div style={{ color: t.textMuted, fontSize: '11px', marginBottom: '4px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ color: t.textMuted, fontSize: 'clamp(10px, 2vw, 11px)', marginBottom: '4px', display: 'flex', alignItems: 'center' }}>
         {title}
         {tooltip && <InfoIcon tooltip={tooltip} theme={theme} />}
       </div>
-      <div style={{ fontSize: '22px', fontWeight: 'bold', color: color || t.text }}>{value}</div>
+      <div style={{ fontSize: 'clamp(18px, 4vw, 22px)', fontWeight: 'bold', color: color || t.text }}>{value}</div>
     </div>
   );
 }
@@ -365,18 +366,18 @@ function ThinkingBreakdown({ metrics, theme }) {
         🧠 Thinking Mode
         <InfoIcon tooltip="Distribution of reasoning levels and their average run durations." theme={theme} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${modes.length}, 1fr)`, gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${modes.length}, 1fr)`, gap: '12px', minWidth: 0 }}>
         {modes.map(mode => {
           const count = thinkingModes[mode] || 0;
           const pct = totalRuns > 0 ? ((count / totalRuns) * 100).toFixed(0) : 0;
           const avgDuration = thinkingAvgDurations[mode] || 0;
           
           return (
-            <div key={mode} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: modeColors[mode] }}>
+            <div key={mode} style={{ textAlign: 'center', minWidth: 0 }}>
+              <div style={{ fontSize: 'clamp(16px, 3vw, 18px)', fontWeight: 'bold', color: modeColors[mode] }}>
                 {pct}%
               </div>
-              <div style={{ fontSize: '9px', color: t.textMuted }}>
+              <div style={{ fontSize: 'clamp(8px, 1.5vw, 9px)', color: t.textMuted }}>
                 {modeLabels[mode]} · {count} · ~{formatDuration(avgDuration)}
               </div>
             </div>
@@ -422,14 +423,14 @@ function ErrorSummary({ metrics, theme }) {
         ⚠️ Errors
         <InfoIcon tooltip="Errors logged during runs. Includes tool failures, auth issues, and network errors." theme={theme} />
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px' }}>
         <div style={{ textAlign: 'center', minWidth: '50px' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: errors.total > 10 ? t.accent : t.accentYellow }}>
+          <div style={{ fontSize: 'clamp(16px, 3vw, 18px)', fontWeight: 'bold', color: errors.total > 10 ? t.accent : t.accentYellow }}>
             {errors.total}
           </div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Total</div>
+          <div style={{ fontSize: 'clamp(8px, 1.5vw, 9px)', color: t.textMuted }}>Total</div>
         </div>
-        <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '8px', minWidth: '200px' }}>
           {sortedErrors.map(([type, count]) => (
             <span key={type} style={{
               padding: '3px 8px',
@@ -466,22 +467,22 @@ function ContextPressure({ metrics, theme }) {
         📏 Context Pressure
         <InfoIcon tooltip="Estimates based on tool output sizes. Compaction = context hit ~80% capacity." theme={theme} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))', gap: '12px' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: pressureColor }}>{compactionCount}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Compactions</div>
+          <div style={{ fontSize: 'clamp(16px, 3vw, 18px)', fontWeight: 'bold', color: pressureColor }}>{compactionCount}</div>
+          <div style={{ fontSize: 'clamp(8px, 1.5vw, 9px)', color: t.textMuted }}>Compactions</div>
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatTokens(totalEstimatedTokens)}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Est. Tokens</div>
+          <div style={{ fontSize: 'clamp(16px, 3vw, 18px)', fontWeight: 'bold', color: t.text }}>{formatTokens(totalEstimatedTokens)}</div>
+          <div style={{ fontSize: 'clamp(8px, 1.5vw, 9px)', color: t.textMuted }}>Est. Tokens</div>
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatTokens(avgEstimatedTokens)}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Avg/Run</div>
+          <div style={{ fontSize: 'clamp(16px, 3vw, 18px)', fontWeight: 'bold', color: t.text }}>{formatTokens(avgEstimatedTokens)}</div>
+          <div style={{ fontSize: 'clamp(8px, 1.5vw, 9px)', color: t.textMuted }}>Avg/Run</div>
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: heavySessions > 0 ? t.accentOrange : t.accentGreen }}>{heavySessions}</div>
-          <div style={{ fontSize: '9px', color: t.textMuted }}>Heavy Sessions</div>
+          <div style={{ fontSize: 'clamp(16px, 3vw, 18px)', fontWeight: 'bold', color: heavySessions > 0 ? t.accentOrange : t.accentGreen }}>{heavySessions}</div>
+          <div style={{ fontSize: 'clamp(8px, 1.5vw, 9px)', color: t.textMuted }}>Heavy Sessions</div>
         </div>
       </div>
     </div>
@@ -518,26 +519,28 @@ function SessionModal({ session, runs, theme, onClose }) {
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 1000,
+      padding: '16px',
     }} onClick={onClose}>
       <div style={{
         backgroundColor: t.card,
         borderRadius: '12px',
-        padding: '20px',
+        padding: 'clamp(16px, 4vw, 20px)',
         maxWidth: '600px',
-        width: '90%',
-        maxHeight: '80vh',
+        width: '100%',
+        maxHeight: '90vh',
         overflow: 'auto',
         border: `1px solid ${t.border}`,
       }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ margin: 0, fontSize: '16px', color: t.text }}>🔍 Session Deep-Dive</h2>
+          <h2 style={{ margin: 0, fontSize: 'clamp(14px, 3vw, 16px)', color: t.text }}>🔍 Session Deep-Dive</h2>
           <button onClick={onClose} style={{
             background: 'none',
             border: 'none',
             color: t.textMuted,
-            fontSize: '20px',
+            fontSize: 'clamp(18px, 4vw, 20px)',
             cursor: 'pointer',
+            padding: '4px 8px',
           }}>×</button>
         </div>
         
@@ -547,15 +550,16 @@ function SessionModal({ session, runs, theme, onClose }) {
           backgroundColor: t.bg, 
           borderRadius: '6px', 
           marginBottom: '16px',
-          fontSize: '11px',
+          fontSize: 'clamp(9px, 2vw, 11px)',
           fontFamily: 'monospace',
           color: t.textMuted,
+          wordBreak: 'break-all',
         }}>
           {session.sessionId}
         </div>
         
         {/* Summary Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '12px', marginBottom: '16px' }}>
           <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.text }}>{sessionRuns.length}</div>
             <div style={{ fontSize: '10px', color: t.textMuted }}>Runs</div>
@@ -842,11 +846,11 @@ export default function Home() {
   const allRuns = Object.values(metrics?.dailyMetrics || {}).flatMap(d => d.runs || []);
   
   return (
-    <div style={{ padding: '16px 20px', maxWidth: '960px', margin: '0 auto', backgroundColor: t.bg, minHeight: '100vh', transition: 'background-color 0.3s' }}>
+    <div style={{ padding: 'clamp(12px, 3vw, 20px)', maxWidth: '960px', margin: '0 auto', backgroundColor: t.bg, minHeight: '100vh', transition: 'background-color 0.3s' }}>
       {/* Header */}
-      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h1 style={{ margin: 0, fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: t.text }}>
+      <div style={{ marginBottom: '16px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0, fontSize: 'clamp(18px, 4vw, 20px)', display: 'flex', alignItems: 'center', gap: '8px', color: t.text }}>
             <span>📊</span> Clawtrics
           </h1>
           {/* Connection Status */}
@@ -904,7 +908,7 @@ export default function Home() {
       {/* Top Stats Row */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(4, 1fr)', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
         gap: '10px',
         marginBottom: '12px',
       }}>
@@ -934,11 +938,11 @@ export default function Home() {
       </div>
       
       {/* Context Pressure + Thinking Mode */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+        <div>
           <ContextPressure metrics={metrics} theme={theme} />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <ThinkingBreakdown metrics={metrics} theme={theme} />
         </div>
       </div>
@@ -949,7 +953,7 @@ export default function Home() {
       </div>
       
       {/* Charts Row 1: Tools + Models */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px', marginBottom: '12px' }}>
         <CompactBarChart 
           title="Tools" 
           data={metrics.tools} 
@@ -977,7 +981,7 @@ export default function Home() {
       </div>
       
       {/* Charts Row 2: Channels + Shell Commands */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px', marginBottom: '12px' }}>
         <CompactBarChart 
           title="Channels" 
           data={metrics.channels} 
@@ -1005,7 +1009,7 @@ export default function Home() {
       </div>
       
       {/* Row 3: Tool Chains + Slowest Runs + Recent Sessions */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '12px' }}>
         <ToolChains 
           chains={metrics.toolChains} 
           theme={theme} 
