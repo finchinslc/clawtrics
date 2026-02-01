@@ -37,6 +37,12 @@ export default function RootLayout({ children }) {
       <head>
         <title>Clawtrics - OpenClaw Metrics</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>{`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+          }
+        `}</style>
       </head>
       <body style={{ 
         margin: 0, 

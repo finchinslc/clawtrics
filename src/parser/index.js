@@ -33,6 +33,95 @@ const TOOL_TOKEN_ESTIMATES = {
 
 const DEFAULT_TOOL_TOKENS = 300;
 
+// Model pricing per 1M tokens (input/output)
+// Prices as of Jan 2025 - update as needed
+const MODEL_PRICING = {
+  // Anthropic
+  'claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
+  'claude-opus-4-20250514': { input: 15.00, output: 75.00 },
+  'anthropic/claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
+  'anthropic/claude-opus-4-20250514': { input: 15.00, output: 75.00 },
+  'claude-3-5-sonnet-20241022': { input: 3.00, output: 15.00 },
+  'claude-3-5-haiku-20241022': { input: 0.80, output: 4.00 },
+  'claude-3-opus-20240229': { input: 15.00, output: 75.00 },
+  // OpenAI
+  'gpt-4o': { input: 2.50, output: 10.00 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60 },
+  'gpt-4-turbo': { input: 10.00, output: 30.00 },
+  'o1': { input: 15.00, output: 60.00 },
+  'o1-mini': { input: 3.00, output: 12.00 },
+  'o3-mini': { input: 1.10, output: 4.40 },
+  // GitHub Copilot (proxied models - use base pricing)
+  'github-copilot/claude-sonnet-4': { input: 3.00, output: 15.00 },
+  'github-copilot/claude-opus-4': { input: 15.00, output: 75.00 },
+  'github-copilot/claude-opus-4.5': { input: 15.00, output: 75.00 },
+  'github-copilot/gpt-4o': { input: 2.50, output: 10.00 },
+  'github-copilot/o1': { input: 15.00, output: 60.00 },
+  'github-copilot/o3-mini': { input: 1.10, output: 4.40 },
+  // Google
+  'gemini-2.0-flash': { input: 0.10, output: 0.40 },
+  'gemini-1.5-pro': { input: 1.25, output: 5.00 },
+  'gemini-1.5-flash': { input: 0.075, output: 0.30 },
+  // xAI
+  'grok-2': { input: 2.00, output: 10.00 },
+  'grok-3': { input: 3.00, output: 15.00 },
+  // OpenRouter (add prefix handling)
+  'openrouter/anthropic/claude-sonnet-4': { input: 3.00, output: 15.00 },
+  'openrouter/anthropic/claude-opus-4': { input: 15.00, output: 75.00 },
+};
+
+// Default pricing for unknown models (assume mid-tier)
+const DEFAULT_PRICING = { input: 3.00, output: 15.00 };
+
+/**
+ * Get pricing for a model, handling various naming conventions
+ */
+function getModelPricing(modelName) {
+  if (!modelName) return DEFAULT_PRICING;
+  
+  // Direct match
+  if (MODEL_PRICING[modelName]) return MODEL_PRICING[modelName];
+  
+  // Try lowercase
+  const lower = modelName.toLowerCase();
+  if (MODEL_PRICING[lower]) return MODEL_PRICING[lower];
+  
+  // Try to match partial names
+  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
+    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
+      return pricing;
+    }
+  }
+  
+  // Heuristics based on model name patterns
+  if (lower.includes('opus')) return { input: 15.00, output: 75.00 };
+  if (lower.includes('sonnet')) return { input: 3.00, output: 15.00 };
+  if (lower.includes('haiku')) return { input: 0.80, output: 4.00 };
+  if (lower.includes('gpt-4o-mini')) return { input: 0.15, output: 0.60 };
+  if (lower.includes('gpt-4o')) return { input: 2.50, output: 10.00 };
+  if (lower.includes('o1-mini') || lower.includes('o3-mini')) return { input: 1.10, output: 4.40 };
+  if (lower.includes('o1') || lower.includes('o3')) return { input: 15.00, output: 60.00 };
+  if (lower.includes('gemini') && lower.includes('flash')) return { input: 0.10, output: 0.40 };
+  if (lower.includes('gemini') && lower.includes('pro')) return { input: 1.25, output: 5.00 };
+  
+  return DEFAULT_PRICING;
+}
+
+/**
+ * Calculate cost for a run based on estimated tokens
+ * Assumes roughly 30% input tokens, 70% output tokens (typical for agent runs)
+ */
+function calculateRunCost(estimatedTokens, modelName) {
+  const pricing = getModelPricing(modelName);
+  const inputTokens = estimatedTokens * 0.3;
+  const outputTokens = estimatedTokens * 0.7;
+  
+  const inputCost = (inputTokens / 1_000_000) * pricing.input;
+  const outputCost = (outputTokens / 1_000_000) * pricing.output;
+  
+  return inputCost + outputCost;
+}
+
 /**
  * Extract the base command from a shell command string
  * e.g., "cd ~/foo && docker compose up" -> "docker"
@@ -164,18 +253,22 @@ function parseLogFile(filePath) {
             return sum + (TOOL_TOKEN_ESTIMATES[tool] || DEFAULT_TOOL_TOKENS);
           }, 0);
           
+          const modelName = startInfo.model || 'unknown';
+          const estimatedCost = calculateRunCost(estimatedTokens, modelName);
+          
           const run = {
             runId,
             sessionId: sessionMatch?.[1],
             durationMs: parseInt(durationMatch[1], 10),
             aborted: abortedMatch?.[1] === 'true',
             time,
-            model: startInfo.model || 'unknown',
+            model: modelName,
             provider: startInfo.provider || 'unknown',
             channel: startInfo.channel || 'unknown',
             thinking: startInfo.thinking || 'off',
             tools: toolsList,
             estimatedTokens,
+            estimatedCost,
             compactions: compactionsByRun.get(runId) || 0,
           };
           
@@ -231,6 +324,7 @@ function parseLogFile(filePath) {
   const minDurationMs = runs.length > 0 ? Math.min(...durations) : 0;
   
   const totalEstimatedTokens = runs.reduce((sum, r) => sum + (r.estimatedTokens || 0), 0);
+  const totalEstimatedCost = runs.reduce((sum, r) => sum + (r.estimatedCost || 0), 0);
   const heavySessions = [...compactionsBySession.values()].filter(c => c >= 3).length;
   
   return {
@@ -250,7 +344,9 @@ function parseLogFile(filePath) {
     abortedRuns: runs.filter(r => r.aborted).length,
     compactionCount,
     totalEstimatedTokens,
+    totalEstimatedCost,
     avgEstimatedTokens: runs.length > 0 ? totalEstimatedTokens / runs.length : 0,
+    avgEstimatedCost: runs.length > 0 ? totalEstimatedCost / runs.length : 0,
     heavySessions,
     runsWithCompaction: runs.filter(r => r.compactions > 0).length,
   };
@@ -333,6 +429,7 @@ function parseAllLogs(options = {}) {
     dailyMetrics,
     compactionCount: 0,
     totalEstimatedTokens: 0,
+    totalEstimatedCost: 0,
     heavySessions: 0,
     runsWithCompaction: 0,
   };
@@ -346,6 +443,7 @@ function parseAllLogs(options = {}) {
     totals.abortedRuns += metrics.abortedRuns;
     totals.compactionCount += metrics.compactionCount;
     totals.totalEstimatedTokens += metrics.totalEstimatedTokens;
+    totals.totalEstimatedCost += metrics.totalEstimatedCost || 0;
     totals.heavySessions += metrics.heavySessions;
     totals.runsWithCompaction += metrics.runsWithCompaction;
     
@@ -377,6 +475,12 @@ function parseAllLogs(options = {}) {
   totals.p95DurationMs = allDurations[Math.floor(allDurations.length * 0.95)] || 0;
   totals.maxDurationMs = allDurations[allDurations.length - 1] || 0;
   totals.avgEstimatedTokens = totals.totalRuns > 0 ? totals.totalEstimatedTokens / totals.totalRuns : 0;
+  totals.avgEstimatedCost = totals.totalRuns > 0 ? totals.totalEstimatedCost / totals.totalRuns : 0;
+  
+  // Calculate projected monthly cost based on daily average
+  const daysWithData = Object.keys(dailyMetrics).length;
+  const avgDailyCost = daysWithData > 0 ? totals.totalEstimatedCost / daysWithData : 0;
+  totals.projectedMonthlyCost = avgDailyCost * 30;
   
   return totals;
 }
@@ -555,4 +659,4 @@ Examples:
 `);
 }
 
-export { parseLogFile, getLogFiles, parseAllLogs, TOOL_TOKEN_ESTIMATES, extractBaseCommand };
+export { parseLogFile, getLogFiles, parseAllLogs, TOOL_TOKEN_ESTIMATES, extractBaseCommand, MODEL_PRICING, getModelPricing, calculateRunCost };

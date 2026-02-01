@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 // Theme colors
 const themes = {
@@ -53,14 +53,11 @@ function formatTokens(tokens) {
   return `${(tokens / 1000).toFixed(1)}K`;
 }
 
-function formatRelativeTime(date) {
-  if (!date) return '';
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+function formatCost(dollars) {
+  if (!dollars || dollars === 0) return '$0.00';
+  if (dollars < 0.01) return `$${(dollars * 100).toFixed(2)}¢`;
+  if (dollars < 1) return `$${dollars.toFixed(3)}`;
+  return `$${dollars.toFixed(2)}`;
 }
 
 // Info icon for inline help
@@ -380,15 +377,284 @@ function ContextPressure({ metrics, theme }) {
   );
 }
 
+function CostEstimate({ metrics, theme }) {
+  const t = themes[theme];
+  const { 
+    totalEstimatedCost = 0, 
+    avgEstimatedCost = 0, 
+    projectedMonthlyCost = 0,
+    dailyMetrics = {}
+  } = metrics || {};
+  
+  // Get today's cost
+  const today = new Date().toISOString().split('T')[0];
+  const todayCost = dailyMetrics[today]?.totalEstimatedCost || 0;
+  
+  // Color based on projected monthly
+  const costColor = projectedMonthlyCost > 100 ? t.accent : projectedMonthlyCost > 50 ? t.accentYellow : t.accentGreen;
+  
+  return (
+    <div style={{
+      backgroundColor: t.card,
+      borderRadius: '8px',
+      padding: '12px 16px',
+      border: `1px solid ${t.border}`,
+    }}>
+      <div style={{ color: t.textMuted, fontSize: '11px', marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
+        💰 Cost Estimate
+        <InfoIcon tooltip="Rough estimates based on model pricing and estimated token counts. Actual costs may vary." theme={theme} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatCost(todayCost)}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Today</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatCost(totalEstimatedCost)}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Total</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatCost(avgEstimatedCost)}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Avg/Run</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: costColor }}>{formatCost(projectedMonthlyCost)}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>~Monthly</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SessionModal({ session, runs, theme, onClose }) {
+  const t = themes[theme];
+  
+  if (!session) return null;
+  
+  const sessionRuns = runs.filter(r => r.sessionId === session.sessionId);
+  const totalDuration = sessionRuns.reduce((sum, r) => sum + r.durationMs, 0);
+  const totalCost = sessionRuns.reduce((sum, r) => sum + (r.estimatedCost || 0), 0);
+  const totalCompactions = sessionRuns.reduce((sum, r) => sum + (r.compactions || 0), 0);
+  
+  // Group tools across all runs
+  const toolCounts = {};
+  sessionRuns.forEach(run => {
+    (run.tools || []).forEach(tool => {
+      toolCounts[tool] = (toolCounts[tool] || 0) + 1;
+    });
+  });
+  const topTools = Object.entries(toolCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+    }} onClick={onClose}>
+      <div style={{
+        backgroundColor: t.card,
+        borderRadius: '12px',
+        padding: '20px',
+        maxWidth: '600px',
+        width: '90%',
+        maxHeight: '80vh',
+        overflow: 'auto',
+        border: `1px solid ${t.border}`,
+      }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ margin: 0, fontSize: '16px', color: t.text }}>🔍 Session Deep-Dive</h2>
+          <button onClick={onClose} style={{
+            background: 'none',
+            border: 'none',
+            color: t.textMuted,
+            fontSize: '20px',
+            cursor: 'pointer',
+          }}>×</button>
+        </div>
+        
+        {/* Session ID */}
+        <div style={{ 
+          padding: '8px 12px', 
+          backgroundColor: t.bg, 
+          borderRadius: '6px', 
+          marginBottom: '16px',
+          fontSize: '11px',
+          fontFamily: 'monospace',
+          color: t.textMuted,
+        }}>
+          {session.sessionId}
+        </div>
+        
+        {/* Summary Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.text }}>{sessionRuns.length}</div>
+            <div style={{ fontSize: '10px', color: t.textMuted }}>Runs</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.text }}>{formatDuration(totalDuration)}</div>
+            <div style={{ fontSize: '10px', color: t.textMuted }}>Duration</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: t.accentGreen }}>{formatCost(totalCost)}</div>
+            <div style={{ fontSize: '10px', color: t.textMuted }}>Cost</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '12px', backgroundColor: t.bg, borderRadius: '8px' }}>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: totalCompactions > 0 ? t.accentYellow : t.text }}>{totalCompactions}</div>
+            <div style={{ fontSize: '10px', color: t.textMuted }}>Compactions</div>
+          </div>
+        </div>
+        
+        {/* Top Tools */}
+        {topTools.length > 0 && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '11px', color: t.textMuted, marginBottom: '8px' }}>🔧 Tools Used</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {topTools.map(([tool, count]) => (
+                <span key={tool} style={{
+                  padding: '4px 8px',
+                  backgroundColor: t.bg,
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  color: t.text,
+                }}>
+                  {tool} <span style={{ color: t.textMuted }}>×{count}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Runs Timeline */}
+        <div>
+          <div style={{ fontSize: '11px', color: t.textMuted, marginBottom: '8px' }}>📋 Run Timeline</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {sessionRuns.map((run, i) => (
+              <div key={run.runId || i} style={{
+                padding: '10px 12px',
+                backgroundColor: t.bg,
+                borderRadius: '6px',
+                borderLeft: `3px solid ${run.aborted ? t.accent : t.accentGreen}`,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold', color: t.text }}>
+                    {run.model || 'unknown'}
+                  </span>
+                  <span style={{ fontSize: '11px', color: t.accentBlue, fontWeight: 'bold' }}>
+                    {formatDuration(run.durationMs)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', fontSize: '10px', color: t.textMuted }}>
+                  <span>📱 {run.channel}</span>
+                  <span>🔧 {(run.tools || []).length} tools</span>
+                  {run.compactions > 0 && <span style={{ color: t.accentYellow }}>📏 {run.compactions} compact</span>}
+                  {run.aborted && <span style={{ color: t.accent }}>⚠️ Aborted</span>}
+                </div>
+                {(run.tools || []).length > 0 && (
+                  <div style={{ marginTop: '6px', fontSize: '10px', color: t.textDim }}>
+                    {(run.tools || []).slice(0, 10).join(' → ')}
+                    {(run.tools || []).length > 10 && ` (+${(run.tools || []).length - 10} more)`}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecentSessions({ runs, theme, onSessionClick, tooltip }) {
+  const t = themes[theme];
+  
+  // Group runs by session and get recent unique sessions
+  const sessionMap = new Map();
+  (runs || []).forEach(run => {
+    if (!run.sessionId) return;
+    if (!sessionMap.has(run.sessionId)) {
+      sessionMap.set(run.sessionId, {
+        sessionId: run.sessionId,
+        runs: [],
+        firstTime: run.time,
+        lastTime: run.time,
+        channel: run.channel,
+      });
+    }
+    const session = sessionMap.get(run.sessionId);
+    session.runs.push(run);
+    if (run.time > session.lastTime) session.lastTime = run.time;
+    if (run.time < session.firstTime) session.firstTime = run.time;
+  });
+  
+  const sessions = [...sessionMap.values()]
+    .sort((a, b) => (b.lastTime || '').localeCompare(a.lastTime || ''))
+    .slice(0, 5);
+  
+  return (
+    <div style={{
+      backgroundColor: t.card,
+      borderRadius: '8px',
+      padding: '12px 16px',
+      border: `1px solid ${t.border}`,
+      flex: 1,
+    }}>
+      <div style={{ color: t.textMuted, fontSize: '11px', marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
+        📂 Recent Sessions
+        {tooltip && <InfoIcon tooltip={tooltip} theme={theme} />}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {sessions.length === 0 ? (
+          <div style={{ color: t.textDim, fontSize: '11px' }}>No sessions</div>
+        ) : sessions.map(session => {
+          const totalDuration = session.runs.reduce((sum, r) => sum + r.durationMs, 0);
+          return (
+            <div 
+              key={session.sessionId} 
+              onClick={() => onSessionClick(session)}
+              style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                fontSize: '11px',
+                padding: '6px 8px',
+                backgroundColor: t.bg,
+                borderRadius: '4px',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = t.border}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = t.bg}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: t.textMuted }}>{session.channel || '?'}</span>
+                <span style={{ color: t.text }}>{session.runs.length} runs</span>
+              </div>
+              <span style={{ color: t.accentBlue }}>{formatDuration(totalDuration)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [theme, setTheme] = useState('dark');
   const [activeFilter, setActiveFilter] = useState(null);
-  const [relativeTime, setRelativeTime] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); // 'connected' | 'connecting' | 'disconnected'
+  const [selectedSession, setSelectedSession] = useState(null);
   
   const t = themes[theme];
   
@@ -401,16 +667,6 @@ export default function Home() {
       setTheme('light');
     }
   }, []);
-  
-  // Update relative time every second
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (lastUpdate) {
-        setRelativeTime(formatRelativeTime(lastUpdate));
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [lastUpdate]);
   
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -426,29 +682,57 @@ export default function Home() {
     }
   };
   
-  const fetchMetrics = useCallback(async () => {
-    try {
-      const res = await fetch('/api/metrics');
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setMetrics(data);
-      setLastUpdate(new Date());
-      setRelativeTime('just now');
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  
+  // SSE connection for real-time updates
   useEffect(() => {
-    fetchMetrics();
-    const interval = setInterval(() => {
-      if (autoRefresh) fetchMetrics();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [autoRefresh, fetchMetrics]);
+    let eventSource;
+    let reconnectTimer;
+    
+    const connect = () => {
+      setConnectionStatus('connecting');
+      eventSource = new EventSource('/api/stream');
+      
+      eventSource.onopen = () => {
+        setConnectionStatus('connected');
+      };
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'metrics') {
+            setMetrics(message.data);
+            setLoading(false);
+            setError(null);
+            setConnectionStatus('connected');
+          } else if (message.type === 'error') {
+            setError(message.error);
+          }
+          // Ignore heartbeat messages
+        } catch (e) {
+          console.error('Failed to parse SSE message:', e);
+        }
+      };
+      
+      eventSource.onerror = () => {
+        setConnectionStatus('disconnected');
+        eventSource.close();
+        
+        // Reconnect after 5 seconds
+        reconnectTimer = setTimeout(connect, 5000);
+      };
+    };
+    
+    connect();
+    
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+    };
+  }, []);
   
   // Apply filter to metrics
   const filteredMetrics = metrics ? (() => {
@@ -504,9 +788,34 @@ export default function Home() {
     <div style={{ padding: '16px 20px', maxWidth: '960px', margin: '0 auto', backgroundColor: t.bg, minHeight: '100vh', transition: 'background-color 0.3s' }}>
       {/* Header */}
       <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: t.text }}>
-          <span>📊</span> Clawtrics
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h1 style={{ margin: 0, fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: t.text }}>
+            <span>📊</span> Clawtrics
+          </h1>
+          {/* Connection Status */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px',
+            padding: '4px 10px',
+            backgroundColor: t.card,
+            borderRadius: '12px',
+            border: `1px solid ${t.border}`,
+          }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: connectionStatus === 'connected' ? t.accentGreen : 
+                             connectionStatus === 'connecting' ? t.accentYellow : t.accent,
+              animation: connectionStatus === 'connecting' ? 'pulse 1s infinite' : 'none',
+            }} />
+            <span style={{ fontSize: '11px', color: t.textMuted }}>
+              {connectionStatus === 'connected' ? 'Live' : 
+               connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+            </span>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {activeFilter && (
             <button onClick={() => setActiveFilter(null)} style={{
@@ -531,26 +840,6 @@ export default function Home() {
             fontSize: '12px',
           }}>
             {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-            <input 
-              type="checkbox" 
-              checked={autoRefresh} 
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              style={{ cursor: 'pointer', width: '14px', height: '14px' }}
-            />
-            <span style={{ color: t.textMuted, fontSize: '11px' }}>Auto</span>
-          </label>
-          <button onClick={fetchMetrics} style={{
-            padding: '6px 12px',
-            backgroundColor: t.card,
-            border: `1px solid ${t.border}`,
-            borderRadius: '4px',
-            color: t.text,
-            cursor: 'pointer',
-            fontSize: '11px',
-          }}>
-            ↻
           </button>
         </div>
       </div>
@@ -590,6 +879,11 @@ export default function Home() {
       {/* Context Pressure */}
       <div style={{ marginBottom: '12px' }}>
         <ContextPressure metrics={metrics} theme={theme} />
+      </div>
+      
+      {/* Cost Estimate */}
+      <div style={{ marginBottom: '12px' }}>
+        <CostEstimate metrics={metrics} theme={theme} />
       </div>
       
       {/* Charts Row 1: Tools + Models */}
@@ -648,7 +942,7 @@ export default function Home() {
         />
       </div>
       
-      {/* Row 3: Tool Chains + Slowest Runs */}
+      {/* Row 3: Tool Chains + Slowest Runs + Recent Sessions */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
         <ToolChains 
           chains={metrics.toolChains} 
@@ -659,6 +953,12 @@ export default function Home() {
           runs={allRuns} 
           theme={theme}
           tooltip="Longest running turns"
+        />
+        <RecentSessions 
+          runs={allRuns} 
+          theme={theme}
+          onSessionClick={setSelectedSession}
+          tooltip="Click to view session details"
         />
       </div>
       
@@ -671,20 +971,15 @@ export default function Home() {
         />
       </div>
       
-      {/* Footer */}
-      <div style={{ 
-        padding: '8px 12px', 
-        backgroundColor: t.card, 
-        borderRadius: '6px',
-        border: `1px solid ${t.border}`,
-        fontSize: '10px',
-        color: t.textDim,
-        display: 'flex',
-        justifyContent: 'space-between',
-      }}>
-        <span>Updated {relativeTime}</span>
-        <span>{autoRefresh ? '🔄 30s' : '⏸️'}</span>
-      </div>
+      {/* Session Modal */}
+      {selectedSession && (
+        <SessionModal 
+          session={selectedSession}
+          runs={allRuns}
+          theme={theme}
+          onClose={() => setSelectedSession(null)}
+        />
+      )}
     </div>
   );
 }
