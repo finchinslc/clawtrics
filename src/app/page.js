@@ -341,11 +341,11 @@ function ThinkingBreakdown({ metrics, theme }) {
     medium: t.accentYellow,
     high: t.accentOrange,
   };
-  const modeEmojis = {
-    off: '⚪',
-    low: '🟢',
-    medium: '🟡',
-    high: '🟠',
+  const modeLabels = {
+    off: 'Off',
+    low: 'Low',
+    medium: 'Med',
+    high: 'High',
   };
   
   const modes = modeOrder.filter(m => thinkingModes[m] > 0);
@@ -365,34 +365,83 @@ function ThinkingBreakdown({ metrics, theme }) {
         🧠 Thinking Mode
         <InfoIcon tooltip="Distribution of reasoning levels and their average run durations." theme={theme} />
       </div>
-      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${modes.length}, 1fr)`, gap: '12px' }}>
         {modes.map(mode => {
           const count = thinkingModes[mode] || 0;
           const pct = totalRuns > 0 ? ((count / totalRuns) * 100).toFixed(0) : 0;
           const avgDuration = thinkingAvgDurations[mode] || 0;
           
           return (
-            <div key={mode} style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center',
-              minWidth: '70px',
-            }}>
-              <div style={{ fontSize: '10px', color: t.textMuted, marginBottom: '4px' }}>
-                {modeEmojis[mode]} {mode}
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 'bold', color: modeColors[mode] }}>
+            <div key={mode} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: modeColors[mode] }}>
                 {pct}%
               </div>
               <div style={{ fontSize: '9px', color: t.textMuted }}>
-                {count} runs
-              </div>
-              <div style={{ fontSize: '10px', color: t.text, marginTop: '2px' }}>
-                ~{formatDuration(avgDuration)}
+                {modeLabels[mode]} · {count} · ~{formatDuration(avgDuration)}
               </div>
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function ErrorSummary({ metrics, theme }) {
+  const t = themes[theme];
+  const { errors = { total: 0, byType: {} } } = metrics || {};
+  
+  if (errors.total === 0) {
+    return null;
+  }
+  
+  const errorLabels = {
+    exec_failed: 'Exec Failed',
+    edit_failed: 'Edit Failed',
+    auth_error: 'Auth Error',
+    rate_limit: 'Rate Limit',
+    timeout: 'Timeout',
+    network_error: 'Network',
+    deprecation: 'Deprecation',
+    lane_error: 'Lane Error',
+    other: 'Other',
+  };
+  
+  const sortedErrors = Object.entries(errors.byType)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+  
+  return (
+    <div style={{
+      backgroundColor: t.card,
+      borderRadius: '8px',
+      padding: '12px 16px',
+      border: `1px solid ${t.border}`,
+    }}>
+      <div style={{ color: t.textMuted, fontSize: '11px', marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
+        ⚠️ Errors
+        <InfoIcon tooltip="Errors logged during runs. Includes tool failures, auth issues, and network errors." theme={theme} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ textAlign: 'center', minWidth: '50px' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: errors.total > 10 ? t.accent : t.accentYellow }}>
+            {errors.total}
+          </div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Total</div>
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {sortedErrors.map(([type, count]) => (
+            <span key={type} style={{
+              padding: '3px 8px',
+              backgroundColor: t.bg,
+              borderRadius: '4px',
+              fontSize: '10px',
+              color: t.text,
+            }}>
+              {errorLabels[type] || type} <span style={{ color: t.textMuted }}>×{count}</span>
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -892,6 +941,11 @@ export default function Home() {
         <div style={{ flex: 1 }}>
           <ThinkingBreakdown metrics={metrics} theme={theme} />
         </div>
+      </div>
+      
+      {/* Error Summary (only shows if errors exist) */}
+      <div style={{ marginBottom: '12px' }}>
+        <ErrorSummary metrics={metrics} theme={theme} />
       </div>
       
       {/* Charts Row 1: Tools + Models */}

@@ -170,11 +170,38 @@ function parseLogFile(filePath) {
   
   let lastToolByRun = new Map();
   
+  // Error tracking
+  const errors = {
+    total: 0,
+    byType: {},
+  };
+  
   for (const line of lines) {
     try {
       const entry = JSON.parse(line);
       const message = entry['1'] || entry['0'];
       const time = entry.time || entry._meta?.date;
+      const logLevel = entry._meta?.logLevelName;
+      
+      // Track errors
+      if (logLevel === 'ERROR') {
+        errors.total++;
+        
+        // Categorize error type
+        let errorType = 'other';
+        const msgStr = String(message);
+        
+        if (msgStr.includes('exec failed')) errorType = 'exec_failed';
+        else if (msgStr.includes('edit failed')) errorType = 'edit_failed';
+        else if (msgStr.includes('No API key')) errorType = 'auth_error';
+        else if (msgStr.includes('rate limit') || msgStr.includes('429')) errorType = 'rate_limit';
+        else if (msgStr.includes('timeout') || msgStr.includes('ETIMEDOUT')) errorType = 'timeout';
+        else if (msgStr.includes('ECONNREFUSED') || msgStr.includes('ENOTFOUND')) errorType = 'network_error';
+        else if (msgStr.includes('DeprecationWarning')) errorType = 'deprecation';
+        else if (msgStr.includes('lane task error')) errorType = 'lane_error';
+        
+        errors.byType[errorType] = (errors.byType[errorType] || 0) + 1;
+      }
       
       // Track shell commands from exec subsystem logs ONLY
       // Format: {"0":"{\"subsystem\":\"exec\"}","1":"elevated command ..."}
@@ -349,6 +376,7 @@ function parseLogFile(filePath) {
     avgEstimatedTokens: runs.length > 0 ? totalEstimatedTokens / runs.length : 0,
     heavySessions,
     runsWithCompaction: runs.filter(r => r.compactions > 0).length,
+    errors,
   };
 }
 
@@ -432,6 +460,7 @@ function parseAllLogs(options = {}) {
     heavySessions: 0,
     runsWithCompaction: 0,
     thinkingModes: {},
+    errors: { total: 0, byType: {} },
   };
   
   const allDurations = [];
@@ -446,6 +475,14 @@ function parseAllLogs(options = {}) {
     totals.totalEstimatedTokens += metrics.totalEstimatedTokens;
     totals.heavySessions += metrics.heavySessions;
     totals.runsWithCompaction += metrics.runsWithCompaction;
+    
+    // Aggregate errors
+    if (metrics.errors) {
+      totals.errors.total += metrics.errors.total || 0;
+      for (const [type, count] of Object.entries(metrics.errors.byType || {})) {
+        totals.errors.byType[type] = (totals.errors.byType[type] || 0) + count;
+      }
+    }
     
     metrics.runs.forEach(r => {
       allDurations.push(r.durationMs);
