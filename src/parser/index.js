@@ -3,7 +3,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
-const LOG_DIR = '/tmp/clawdbot';
+const LOG_DIRS = ['/tmp/clawdbot', '/tmp/openclaw'];
 
 // Estimated average tokens per tool output
 const TOOL_TOKEN_ESTIMATES = {
@@ -34,6 +34,43 @@ const TOOL_TOKEN_ESTIMATES = {
 const DEFAULT_TOOL_TOKENS = 300;
 
 /**
+ * Extract the base command from a shell command string
+ * e.g., "cd ~/foo && docker compose up" -> "docker"
+ * e.g., "brew install foo" -> "brew"
+ * e.g., "export PATH=... && npm run build" -> "npm"
+ */
+function extractBaseCommand(cmdString) {
+  if (!cmdString) return 'unknown';
+  
+  // Remove common prefixes
+  let cmd = cmdString
+    .replace(/^(elevated command |command |spawning )/i, '')
+    .trim();
+  
+  // Split by && or || or ; and take the last meaningful command
+  const parts = cmd.split(/\s*(?:&&|\|\||;)\s*/);
+  
+  // Find the first part that's not just cd, export, or env setting
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    if (/^(cd|export|source|\.)\s/.test(trimmed)) continue;
+    
+    // Get first word
+    const firstWord = trimmed.split(/\s+/)[0];
+    if (firstWord && !['cd', 'export', 'source', '.'].includes(firstWord)) {
+      // Handle path-based commands like /usr/bin/git
+      const basename = firstWord.split('/').pop();
+      return basename || firstWord;
+    }
+  }
+  
+  // Fallback to first word of original
+  const firstWord = cmd.split(/\s+/)[0];
+  return firstWord?.split('/').pop() || 'unknown';
+}
+
+/**
  * Parse a single log file and extract metrics
  */
 function parseLogFile(filePath) {
@@ -41,27 +78,39 @@ function parseLogFile(filePath) {
   const lines = content.trim().split('\n').filter(Boolean);
   
   const runs = [];
-  const runStarts = new Map(); // Track run starts to match with completions
-  const runTools = new Map(); // Track tools per run for chain analysis
+  const runStarts = new Map();
+  const runTools = new Map();
   const tools = {};
   const toolChains = {};
   const sessions = new Set();
   const models = {};
   const providers = {};
   const channels = {};
+  const shellCommands = {};
   
-  // Context pressure tracking
   let compactionCount = 0;
   const compactionsBySession = new Map();
   const compactionsByRun = new Map();
   
-  let lastToolByRun = new Map(); // Track last tool per run for chaining
+  let lastToolByRun = new Map();
   
   for (const line of lines) {
     try {
       const entry = JSON.parse(line);
-      const message = entry['1'];
+      const message = entry['1'] || entry['0'];
       const time = entry.time || entry._meta?.date;
+      
+      // Track shell commands from exec subsystem logs ONLY
+      // Format: {"0":"{\"subsystem\":\"exec\"}","1":"elevated command ..."}
+      const subsystem = entry['0'];
+      if (typeof subsystem === 'string' && subsystem.includes('"subsystem":"exec"') &&
+          typeof message === 'string' && message.startsWith('elevated command ')) {
+        // Extract and categorize the command
+        const baseCmd = extractBaseCommand(message);
+        if (baseCmd && baseCmd !== 'unknown') {
+          shellCommands[baseCmd] = (shellCommands[baseCmd] || 0) + 1;
+        }
+      }
       
       // Track compaction events
       if (typeof message === 'string' && message.includes('compaction start:')) {
@@ -77,7 +126,7 @@ function parseLogFile(filePath) {
         }
       }
       
-      // Track run starts (to get model/provider/channel info)
+      // Track run starts
       if (typeof message === 'string' && message.includes('embedded run start:')) {
         const runMatch = message.match(/runId=([a-f0-9-]+)/);
         const sessionMatch = message.match(/sessionId=([a-f0-9-]+)/);
@@ -111,7 +160,6 @@ function parseLogFile(filePath) {
           const startInfo = runStarts.get(runId) || {};
           const toolsList = runTools.get(runId) || [];
           
-          // Calculate estimated tokens for this run
           const estimatedTokens = toolsList.reduce((sum, tool) => {
             return sum + (TOOL_TOKEN_ESTIMATES[tool] || DEFAULT_TOOL_TOKENS);
           }, 0);
@@ -137,12 +185,10 @@ function parseLogFile(filePath) {
             sessions.add(sessionMatch[1]);
           }
           
-          // Aggregate model/provider/channel stats
           models[run.model] = (models[run.model] || 0) + 1;
           providers[run.provider] = (providers[run.provider] || 0) + 1;
           channels[run.channel] = (channels[run.channel] || 0) + 1;
           
-          // Clean up tracking
           lastToolByRun.delete(runId);
         }
       }
@@ -158,12 +204,10 @@ function parseLogFile(filePath) {
           
           tools[tool] = (tools[tool] || 0) + 1;
           
-          // Track tools per run
           if (runId && runTools.has(runId)) {
             runTools.get(runId).push(tool);
           }
           
-          // Track tool chains (A → B)
           if (runId) {
             const lastTool = lastToolByRun.get(runId);
             if (lastTool && lastTool !== tool) {
@@ -180,23 +224,20 @@ function parseLogFile(filePath) {
     }
   }
   
-  // Calculate run durations
   const durations = runs.map(r => r.durationMs);
   const totalDurationMs = durations.reduce((sum, d) => sum + d, 0);
   const avgDurationMs = runs.length > 0 ? totalDurationMs / runs.length : 0;
   const maxDurationMs = Math.max(...durations, 0);
   const minDurationMs = runs.length > 0 ? Math.min(...durations) : 0;
   
-  // Calculate estimated tokens
   const totalEstimatedTokens = runs.reduce((sum, r) => sum + (r.estimatedTokens || 0), 0);
-  
-  // Count heavy sessions (3+ compactions)
   const heavySessions = [...compactionsBySession.values()].filter(c => c >= 3).length;
   
   return {
     runs,
     tools,
     toolChains,
+    shellCommands,
     models,
     providers,
     channels,
@@ -207,7 +248,6 @@ function parseLogFile(filePath) {
     maxDurationMs,
     minDurationMs,
     abortedRuns: runs.filter(r => r.aborted).length,
-    // Context pressure metrics
     compactionCount,
     totalEstimatedTokens,
     avgEstimatedTokens: runs.length > 0 ? totalEstimatedTokens / runs.length : 0,
@@ -217,24 +257,39 @@ function parseLogFile(filePath) {
 }
 
 /**
- * Get all available log files
+ * Get all available log files from all log directories
  */
 function getLogFiles() {
   const files = [];
   
-  if (existsSync(LOG_DIR)) {
-    const logFiles = readdirSync(LOG_DIR)
-      .filter(f => f.endsWith('.log'))
-      .map(f => ({
-        path: join(LOG_DIR, f),
-        date: f.match(/clawdbot-(\d{4}-\d{2}-\d{2})\.log/)?.[1],
-      }))
-      .filter(f => f.date);
-    
-    files.push(...logFiles);
+  for (const logDir of LOG_DIRS) {
+    if (existsSync(logDir)) {
+      const logFiles = readdirSync(logDir)
+        .filter(f => f.endsWith('.log'))
+        .map(f => {
+          // Match various date patterns in log filenames
+          const dateMatch = f.match(/(\d{4}-\d{2}-\d{2})/);
+          return {
+            path: join(logDir, f),
+            date: dateMatch?.[1],
+            source: logDir.includes('openclaw') ? 'openclaw' : 'clawdbot',
+          };
+        })
+        .filter(f => f.date);
+      
+      files.push(...logFiles);
+    }
   }
   
-  return files.sort((a, b) => b.date.localeCompare(a.date));
+  // Sort by date descending, then dedupe by date (prefer openclaw)
+  files.sort((a, b) => {
+    const dateCompare = b.date.localeCompare(a.date);
+    if (dateCompare !== 0) return dateCompare;
+    // Prefer openclaw logs as they have more detail
+    return a.source === 'openclaw' ? -1 : 1;
+  });
+  
+  return files;
 }
 
 /**
@@ -242,12 +297,25 @@ function getLogFiles() {
  */
 function parseAllLogs(options = {}) {
   const { days = 30 } = options;
-  const files = getLogFiles().slice(0, days);
+  const files = getLogFiles().slice(0, days * 2); // Get more files since we have 2 sources
   const dailyMetrics = {};
+  const seenDates = new Set();
   
   for (const file of files) {
+    // Skip if we already have this date from a preferred source
+    if (seenDates.has(file.date)) {
+      // Merge shell commands from both sources
+      const existing = dailyMetrics[file.date];
+      const metrics = parseLogFile(file.path);
+      for (const [cmd, count] of Object.entries(metrics.shellCommands || {})) {
+        existing.shellCommands[cmd] = (existing.shellCommands[cmd] || 0) + count;
+      }
+      continue;
+    }
+    
     const metrics = parseLogFile(file.path);
     dailyMetrics[file.date] = metrics;
+    seenDates.add(file.date);
   }
   
   // Aggregate totals
@@ -258,11 +326,11 @@ function parseAllLogs(options = {}) {
     abortedRuns: 0,
     tools: {},
     toolChains: {},
+    shellCommands: {},
     models: {},
     providers: {},
     channels: {},
     dailyMetrics,
-    // Context pressure
     compactionCount: 0,
     totalEstimatedTokens: 0,
     heavySessions: 0,
@@ -281,7 +349,6 @@ function parseAllLogs(options = {}) {
     totals.heavySessions += metrics.heavySessions;
     totals.runsWithCompaction += metrics.runsWithCompaction;
     
-    // Aggregate durations for percentile calculations
     metrics.runs.forEach(r => allDurations.push(r.durationMs));
     
     for (const [tool, count] of Object.entries(metrics.tools)) {
@@ -289,6 +356,9 @@ function parseAllLogs(options = {}) {
     }
     for (const [chain, count] of Object.entries(metrics.toolChains)) {
       totals.toolChains[chain] = (totals.toolChains[chain] || 0) + count;
+    }
+    for (const [cmd, count] of Object.entries(metrics.shellCommands || {})) {
+      totals.shellCommands[cmd] = (totals.shellCommands[cmd] || 0) + count;
     }
     for (const [model, count] of Object.entries(metrics.models)) {
       totals.models[model] = (totals.models[model] || 0) + count;
@@ -301,22 +371,16 @@ function parseAllLogs(options = {}) {
     }
   }
   
-  // Calculate percentiles
   allDurations.sort((a, b) => a - b);
   totals.avgDurationMs = totals.totalRuns > 0 ? totals.totalDurationMs / totals.totalRuns : 0;
   totals.p50DurationMs = allDurations[Math.floor(allDurations.length * 0.5)] || 0;
   totals.p95DurationMs = allDurations[Math.floor(allDurations.length * 0.95)] || 0;
   totals.maxDurationMs = allDurations[allDurations.length - 1] || 0;
-  
-  // Calculate average estimated tokens
   totals.avgEstimatedTokens = totals.totalRuns > 0 ? totals.totalEstimatedTokens / totals.totalRuns : 0;
   
   return totals;
 }
 
-/**
- * Format duration for display
- */
 function formatDuration(ms) {
   if (!ms || ms === 0) return '0s';
   if (ms < 1000) return `${ms}ms`;
@@ -324,18 +388,12 @@ function formatDuration(ms) {
   return `${(ms / 60000).toFixed(1)}m`;
 }
 
-/**
- * Format token count for display
- */
 function formatTokens(tokens) {
   if (!tokens || tokens === 0) return '0';
   if (tokens < 1000) return String(Math.round(tokens));
   return `${(tokens / 1000).toFixed(1)}K`;
 }
 
-/**
- * Print a bar chart in terminal
- */
 function printBar(label, value, max, width = 30) {
   const barLen = Math.round((value / max) * width);
   const bar = '█'.repeat(barLen) + '░'.repeat(width - barLen);
@@ -346,7 +404,7 @@ function printBar(label, value, max, width = 30) {
 const args = process.argv.slice(2);
 const command = args[0] || 'summary';
 
-if (command === 'summary' || command === 'daily' || command === 'tools' || command === 'models' || command === 'chains' || command === 'context') {
+if (command === 'summary' || command === 'daily' || command === 'tools' || command === 'models' || command === 'chains' || command === 'context' || command === 'shell') {
   const metrics = parseAllLogs({ days: 30 });
   
   if (command === 'summary') {
@@ -373,6 +431,15 @@ if (command === 'summary' || command === 'daily' || command === 'tools' || comma
     const maxToolCount = sortedTools[0]?.[1] || 1;
     for (const [tool, count] of sortedTools) {
       printBar(tool, count, maxToolCount);
+    }
+    
+    console.log('\n💻 \x1b[1mTop Shell Commands:\x1b[0m');
+    const sortedShell = Object.entries(metrics.shellCommands)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    const maxShellCount = sortedShell[0]?.[1] || 1;
+    for (const [cmd, count] of sortedShell) {
+      printBar(cmd, count, maxShellCount);
     }
     
     console.log('\n🤖 \x1b[1mModels:\x1b[0m');
@@ -421,6 +488,15 @@ if (command === 'summary' || command === 'daily' || command === 'tools' || comma
       printBar(tool, count, maxCount, 40);
     }
     
+  } else if (command === 'shell') {
+    console.log('\n💻 \x1b[1mShell Commands\x1b[0m\n');
+    const sortedShell = Object.entries(metrics.shellCommands)
+      .sort((a, b) => b[1] - a[1]);
+    const maxCount = sortedShell[0]?.[1] || 1;
+    for (const [cmd, count] of sortedShell) {
+      printBar(cmd, count, maxCount, 40);
+    }
+    
   } else if (command === 'models') {
     console.log('\n🤖 \x1b[1mModel Usage\x1b[0m\n');
     const sortedModels = Object.entries(metrics.models)
@@ -463,6 +539,7 @@ Commands:
   summary   Show overall metrics summary (default)
   daily     Show daily breakdown
   tools     Show tool usage breakdown
+  shell     Show shell command breakdown
   models    Show model usage breakdown
   chains    Show tool chain patterns
   context   Show context pressure analysis
@@ -472,9 +549,10 @@ Examples:
   clawtrics              # Show summary
   clawtrics daily        # Show last 14 days
   clawtrics tools        # Tool usage chart
+  clawtrics shell        # Shell commands (docker, git, curl, etc.)
   clawtrics chains       # Tool sequence patterns
   clawtrics context      # Context pressure details
 `);
 }
 
-export { parseLogFile, getLogFiles, parseAllLogs, TOOL_TOKEN_ESTIMATES };
+export { parseLogFile, getLogFiles, parseAllLogs, TOOL_TOKEN_ESTIMATES, extractBaseCommand };

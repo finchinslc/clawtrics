@@ -620,7 +620,7 @@ export default function Home() {
         />
       </div>
       
-      {/* Charts Row 2: Channels + Providers */}
+      {/* Charts Row 2: Channels + Shell Commands */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
         <CompactBarChart 
           title="Channels" 
@@ -635,16 +635,16 @@ export default function Home() {
           tooltip="Message sources: webchat, discord, etc."
         />
         <CompactBarChart 
-          title="Providers" 
-          data={metrics.providers} 
-          color={t.accentPurple} 
-          emoji="☁️" 
+          title="Shell Commands" 
+          data={metrics.shellCommands} 
+          color={t.accentOrange} 
+          emoji="💻" 
           maxItems={5} 
           theme={theme}
           onBarClick={handleBarClick}
           activeFilter={activeFilter}
-          filterType="provider"
-          tooltip="API providers routing requests"
+          filterType="shell"
+          tooltip="CLI tools: docker, git, curl, npm, etc."
         />
       </div>
       

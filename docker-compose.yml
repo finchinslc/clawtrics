@@ -5,7 +5,8 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      # Mount OpenClaw logs directory (read-only)
+      # Mount OpenClaw logs directories (read-only)
       - /tmp/clawdbot:/tmp/clawdbot:ro
+      - /tmp/openclaw:/tmp/openclaw:ro
     environment:
       NODE_ENV: production
