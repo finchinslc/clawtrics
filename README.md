@@ -2,6 +2,8 @@
 
 Metrics dashboard for OpenClaw — track run durations, tool usage, models, channels, and more.
 
+![Clawtrics Dashboard](screenshot.png)
+
 ## Features
 
 - **Run metrics**: Total runs, duration, sessions, abort rate
