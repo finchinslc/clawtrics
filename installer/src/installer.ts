@@ -47,20 +47,23 @@ function runCommandLive(cmd: string, args: string[], cwd?: string): Promise<void
 
 function detectExistingInstall(): ExistingInstall | null {
   const installDir = DEFAULT_INSTALL_DIR
-  const composePath = join(installDir, 'docker-compose.yml')
+  const packagePath = join(installDir, 'package.json')
   const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.clawtrics.dashboard.plist')
   
-  if (!existsSync(installDir) || !existsSync(composePath)) {
+  if (!existsSync(installDir) || !existsSync(packagePath)) {
     return null
   }
   
-  // Parse port from docker-compose.yml
+  // Parse port from .env or default
   let port = DEFAULT_PORT
+  const envPath = join(installDir, '.env.local')
   try {
-    const composeContent = readFileSync(composePath, 'utf-8')
-    const portMatch = composeContent.match(/(\d+):3000/)
-    if (portMatch) {
-      port = parseInt(portMatch[1], 10)
+    if (existsSync(envPath)) {
+      const envContent = readFileSync(envPath, 'utf-8')
+      const portMatch = envContent.match(/PORT=(\d+)/)
+      if (portMatch) {
+        port = parseInt(portMatch[1], 10)
+      }
     }
   } catch {
     // Use default
@@ -76,16 +79,25 @@ function detectExistingInstall(): ExistingInstall | null {
 async function checkPrerequisites(): Promise<{ ok: boolean; missing: string[] }> {
   const missing: string[] = []
   
-  // Check Docker
-  if (!commandExists('docker')) {
-    missing.push('docker')
+  // Check Node.js
+  if (!commandExists('node')) {
+    missing.push('node')
   } else {
-    // Check if Docker is running
+    // Check Node version >= 18
     try {
-      runCommand('docker info')
+      const version = runCommand('node --version').replace('v', '')
+      const major = parseInt(version.split('.')[0], 10)
+      if (major < 18) {
+        missing.push('node >= 18 (current: ' + version + ')')
+      }
     } catch {
-      missing.push('docker (not running)')
+      // Ignore
     }
+  }
+  
+  // Check npm
+  if (!commandExists('npm')) {
+    missing.push('npm')
   }
   
   // Check git
@@ -104,13 +116,22 @@ async function runUpdate(existing: ExistingInstall): Promise<void> {
     await runCommandLive('git', ['pull', 'origin', 'main'], existing.installDir)
     spinner.stop('Code updated')
     
-    spinner.start('Rebuilding Docker image...')
-    await runCommandLive('docker', ['compose', 'up', '-d', '--build'], existing.installDir)
-    spinner.stop('Container rebuilt and running')
+    spinner.start('Installing dependencies...')
+    await runCommandLive('npm', ['install'], existing.installDir)
+    spinner.stop('Dependencies installed')
+    
+    spinner.start('Building...')
+    await runCommandLive('npm', ['run', 'build'], existing.installDir)
+    spinner.stop('Build complete')
     
     p.log.success(pc.green('Update complete!'))
     p.log.info('')
-    p.log.info(`Dashboard running at: ${pc.cyan(`http://localhost:${existing.port}`)}`)
+    p.log.info(`Dashboard: ${pc.cyan(`http://localhost:${existing.port}`)}`)
+    
+    if (existing.hasLaunchAgent) {
+      p.log.info(pc.dim('Restart the service to apply changes:'))
+      p.log.info(`  ${pc.cyan('npx clawtrics-installer restart')}`)
+    }
     
     p.outro(pc.green('✓ Clawtrics updated'))
     
@@ -126,17 +147,17 @@ async function cloneAndSetup(config: InstallerConfig, spinner: ReturnType<typeof
   spinner.message('Cloning Clawtrics...')
   await runCommandLive('git', ['clone', REPO_URL, installDir])
   
-  // Update port in docker-compose.yml if not default
-  if (port !== 3000) {
+  spinner.message('Installing dependencies...')
+  await runCommandLive('npm', ['install'], installDir)
+  
+  // Write .env.local with port if not default
+  if (port !== 3001) {
     spinner.message('Configuring port...')
-    const composePath = join(installDir, 'docker-compose.yml')
-    let compose = readFileSync(composePath, 'utf-8')
-    compose = compose.replace(/3001:3000/, `${port}:3000`)
-    writeFileSync(composePath, compose)
+    writeFileSync(join(installDir, '.env.local'), `PORT=${port}\n`)
   }
   
-  spinner.message('Building Docker image (this may take a minute)...')
-  await runCommandLive('docker', ['compose', 'up', '-d', '--build'], installDir)
+  spinner.message('Building (this may take a minute)...')
+  await runCommandLive('npm', ['run', 'build'], installDir)
 }
 
 async function setupLaunchAgent(config: InstallerConfig, spinner: ReturnType<typeof p.spinner>): Promise<void> {
@@ -145,13 +166,14 @@ async function setupLaunchAgent(config: InstallerConfig, spinner: ReturnType<typ
     return
   }
   
-  const { installDir } = config
+  const { installDir, port } = config
   const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
   const plistPath = join(launchAgentsDir, 'com.clawtrics.dashboard.plist')
   
   mkdirSync(launchAgentsDir, { recursive: true })
   
-  const dockerPath = runCommand('which docker')
+  const npmPath = runCommand('which npm')
+  const nodePath = runCommand('which node').replace('/node', '')
   
   const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -161,24 +183,26 @@ async function setupLaunchAgent(config: InstallerConfig, spinner: ReturnType<typ
     <string>com.clawtrics.dashboard</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${dockerPath}</string>
-        <string>compose</string>
-        <string>up</string>
-        <string>-d</string>
+        <string>${npmPath}</string>
+        <string>start</string>
     </array>
     <key>WorkingDirectory</key>
     <string>${installDir}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>${nodePath}:/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>PORT</key>
+        <string>${port}</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
+    <key>KeepAlive</key>
+    <true/>
     <key>StandardOutPath</key>
-    <string>${installDir}/logs/launchd-stdout.log</string>
+    <string>${installDir}/logs/stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>${installDir}/logs/launchd-stderr.log</string>
+    <string>${installDir}/logs/stderr.log</string>
 </dict>
 </plist>`
 
@@ -239,14 +263,20 @@ export async function runInstaller(): Promise<void> {
       process.exit(0)
     }
     
-    // Stop and remove existing
+    // Stop service and remove existing
     const rmSpinner = p.spinner()
     rmSpinner.start('Removing existing installation...')
-    try {
-      await runCommandLive('docker', ['compose', 'down', '-v'], existing.installDir)
-    } catch {
-      // Ignore errors
+    
+    // Unload launch agent if exists
+    const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.clawtrics.dashboard.plist')
+    if (existsSync(plistPath)) {
+      try {
+        runCommand(`launchctl unload ${plistPath}`)
+      } catch {
+        // Ignore
+      }
     }
+    
     await runCommandLive('rm', ['-rf', existing.installDir])
     rmSpinner.stop('Removed')
   }
@@ -261,12 +291,12 @@ export async function runInstaller(): Promise<void> {
     prereqSpinner.stop('Prerequisites check failed')
     
     for (const dep of missing) {
-      if (dep === 'docker') {
-        p.log.error(pc.red('Docker is not installed.'))
-        p.log.info(`Install Docker Desktop: ${pc.cyan('https://docker.com/products/docker-desktop')}`)
-      } else if (dep === 'docker (not running)') {
-        p.log.error(pc.red('Docker is installed but not running.'))
-        p.log.info('Please start Docker Desktop and try again.')
+      if (dep.startsWith('node')) {
+        p.log.error(pc.red(`Node.js issue: ${dep}`))
+        p.log.info(`Install Node.js 18+: ${pc.cyan('https://nodejs.org')}`)
+      } else if (dep === 'npm') {
+        p.log.error(pc.red('npm is not installed.'))
+        p.log.info(`Install Node.js: ${pc.cyan('https://nodejs.org')}`)
       } else if (dep === 'git') {
         p.log.error(pc.red('Git is not installed.'))
         p.log.info(`Install Git: ${pc.cyan('https://git-scm.com')}`)
@@ -359,9 +389,15 @@ export async function runInstaller(): Promise<void> {
       launchSpinner.start('Setting up auto-start...')
       await setupLaunchAgent(config, launchSpinner)
       launchSpinner.stop('Auto-start configured')
+      
+      p.log.success(pc.green('Installation complete! Dashboard is running.'))
+    } else {
+      p.log.success(pc.green('Installation complete!'))
+      p.log.info('')
+      p.log.info(pc.bold('Start the dashboard:'))
+      p.log.info(`  ${pc.cyan('npx clawtrics-installer start')}`)
     }
     
-    p.log.success(pc.green('Installation complete!'))
     p.log.info('')
     p.log.info(`Dashboard: ${pc.cyan(`http://localhost:${config.port}`)}`)
     p.log.info('')

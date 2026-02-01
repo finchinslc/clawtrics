@@ -2,8 +2,6 @@
 
 Metrics dashboard for OpenClaw — track run durations, tool usage, models, channels, and more.
 
-![Dashboard Preview](https://via.placeholder.com/800x400/1a1a1a/ef4444?text=Clawtrics+Dashboard)
-
 ## Features
 
 - **Run metrics**: Total runs, duration, sessions, abort rate
@@ -11,6 +9,7 @@ Metrics dashboard for OpenClaw — track run durations, tool usage, models, chan
 - **Context pressure**: Compaction tracking, estimated tokens
 - **Thinking mode breakdown**: Distribution of reasoning levels (off/low/medium/high)
 - **Error tracking**: Categorized error counts (exec failures, auth errors, etc.)
+- **Cost estimation**: Per-run and projected monthly costs by model
 - **Tool usage**: Bar chart of most-used tools
 - **Model breakdown**: Which AI models you're using
 - **Channel stats**: Discord, webchat, heartbeat, etc.
@@ -20,29 +19,14 @@ Metrics dashboard for OpenClaw — track run durations, tool usage, models, chan
 
 ## Quick Start
 
-### One-Line Install (recommended)
-
 ```bash
 npx clawtrics-installer
 ```
 
 This will:
-- Check prerequisites (Docker, Git)
-- Clone and configure the dashboard  
-- Build and start the Docker container
+- Check prerequisites (Node.js 18+, Git)
+- Clone and build the dashboard
 - Set up auto-start on boot (optional, macOS)
-
-### Manual (Docker)
-
-```bash
-git clone https://github.com/finchinslc/clawtrics.git
-cd clawtrics
-docker compose up -d
-
-# Open http://localhost:3001
-```
-
-The container mounts `/tmp/clawdbot` and `/tmp/openclaw` (read-only) to access OpenClaw logs.
 
 ## Managing the Dashboard
 
@@ -51,81 +35,60 @@ npx clawtrics-installer status   # Check if running
 npx clawtrics-installer start    # Start the dashboard
 npx clawtrics-installer stop     # Stop the dashboard
 npx clawtrics-installer restart  # Restart
-npx clawtrics-installer logs     # View container logs
+npx clawtrics-installer logs     # View logs
 npx clawtrics-installer open     # Open in browser
 npx clawtrics-installer update   # Pull latest & rebuild
 ```
 
-### Local Development
+## Manual Installation
 
 ```bash
 git clone https://github.com/finchinslc/clawtrics.git
 cd clawtrics
 npm install
+npm run build
+npm start
 
-# Run dashboard
-npm run dev -- -p 3001
 # Open http://localhost:3001
+```
 
-# CLI usage
+### Development Mode
+
+```bash
+npm run dev -- -p 3001
+```
+
+## CLI
+
+```bash
 npm run cli                 # Summary
 npm run cli daily           # Daily breakdown
 npm run cli tools           # Tool usage
 npm run cli models          # Model usage
 ```
 
-## CLI Commands
-
-```bash
-clawtrics          # Overall summary
-clawtrics daily    # Last 14 days breakdown
-clawtrics tools    # Full tool usage chart
-clawtrics models   # Model usage chart
-clawtrics help     # Show help
-```
-
 ## Data Source
 
-Clawtrics parses OpenClaw's log files from `/tmp/clawdbot/*.log`. These are NDJSON logs with structured run data.
+Clawtrics parses OpenClaw's log files from `/tmp/clawdbot/*.log` and `/tmp/openclaw/*.log`. These are NDJSON logs with structured run data.
 
-### What's tracked
+### What's Tracked
 
-From log analysis:
 - Run start/end times and duration
 - Session IDs
 - Model and provider
 - Message channel (webchat, discord, etc.)
 - Tool usage (exec, read, write, browser, etc.)
-- Abort status
+- Context pressure (compactions, token estimates)
+- Thinking mode usage
+- Errors by category
+- Cost estimates (based on model pricing)
 
-### Not yet tracked (need API-level logging)
-- Token counts (input/output/cache)
-- Cost estimates
-- Thinking tokens
+## Requirements
 
-## Tech Stack
-
-- **Next.js 15** — React framework
-- **Recharts** — (available for custom charts)
-- **Node.js** — Log parsing
-
-## Development
-
-```bash
-npm run dev     # Start dev server
-npm run build   # Production build
-npm run cli     # Run CLI directly
-```
-
-## Roadmap
-
-- [ ] Token count extraction (requires OpenClaw logging changes)
-- [ ] Cost estimation with model pricing
-- [ ] Date range picker
-- [ ] Export to CSV
-- [ ] WebSocket real-time updates
-- [ ] Historical trends
+- Node.js 18+
+- Git
+- macOS or Linux
 
 ## License
 
-MIT © Finch
+MIT
