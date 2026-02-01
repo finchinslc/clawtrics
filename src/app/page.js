@@ -16,6 +16,7 @@ const themes = {
     accentGreen: '#22c55e',
     accentPurple: '#a855f7',
     accentYellow: '#f59e0b',
+    accentOrange: '#f97316',
     barBg: '#333',
     tooltipBg: '#333',
     tooltipText: '#fff',
@@ -32,6 +33,7 @@ const themes = {
     accentGreen: '#16a34a',
     accentPurple: '#9333ea',
     accentYellow: '#d97706',
+    accentOrange: '#ea580c',
     barBg: '#e5e5e5',
     tooltipBg: '#1a1a1a',
     tooltipText: '#fff',
@@ -45,6 +47,12 @@ function formatDuration(ms) {
   return `${(ms / 60000).toFixed(1)}m`;
 }
 
+function formatTokens(tokens) {
+  if (!tokens || tokens === 0) return '0';
+  if (tokens < 1000) return String(Math.round(tokens));
+  return `${(tokens / 1000).toFixed(1)}K`;
+}
+
 function formatRelativeTime(date) {
   if (!date) return '';
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -53,55 +61,6 @@ function formatRelativeTime(date) {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ago`;
-}
-
-// Tooltip component
-function Tooltip({ children, text, theme }) {
-  const [show, setShow] = useState(false);
-  const t = themes[theme];
-  
-  if (!text) return children;
-  
-  return (
-    <div 
-      style={{ position: 'relative', display: 'inline-block', width: '100%' }}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      {children}
-      {show && (
-        <div style={{
-          position: 'absolute',
-          bottom: '100%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          marginBottom: '8px',
-          padding: '8px 12px',
-          backgroundColor: t.tooltipBg,
-          color: t.tooltipText,
-          fontSize: '11px',
-          borderRadius: '6px',
-          whiteSpace: 'nowrap',
-          zIndex: 1000,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          pointerEvents: 'none',
-        }}>
-          {text}
-          <div style={{
-            position: 'absolute',
-            top: '100%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 0,
-            height: 0,
-            borderLeft: '6px solid transparent',
-            borderRight: '6px solid transparent',
-            borderTop: `6px solid ${t.tooltipBg}`,
-          }} />
-        </div>
-      )}
-    </div>
-  );
 }
 
 // Info icon for inline help
@@ -141,7 +100,6 @@ function InfoIcon({ tooltip, theme }) {
           color: t.tooltipText,
           fontSize: '11px',
           borderRadius: '6px',
-          whiteSpace: 'nowrap',
           zIndex: 1000,
           boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
           pointerEvents: 'none',
@@ -381,6 +339,47 @@ function SlowestRuns({ runs, theme, tooltip }) {
   );
 }
 
+function ContextPressure({ metrics, theme }) {
+  const t = themes[theme];
+  const { compactionCount = 0, totalEstimatedTokens = 0, avgEstimatedTokens = 0, heavySessions = 0, runsWithCompaction = 0, totalRuns = 0 } = metrics || {};
+  
+  // Determine pressure level for color coding
+  const compactionRate = totalRuns > 0 ? (runsWithCompaction / totalRuns) * 100 : 0;
+  const pressureColor = compactionRate > 20 ? t.accent : compactionRate > 10 ? t.accentYellow : t.accentGreen;
+  
+  return (
+    <div style={{
+      backgroundColor: t.card,
+      borderRadius: '8px',
+      padding: '12px 16px',
+      border: `1px solid ${t.border}`,
+    }}>
+      <div style={{ color: t.textMuted, fontSize: '11px', marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
+        📏 Context Pressure
+        <InfoIcon tooltip="Estimates based on tool output sizes. Compaction = context hit ~80% capacity." theme={theme} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: pressureColor }}>{compactionCount}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Compactions</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatTokens(totalEstimatedTokens)}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Est. Tokens</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: t.text }}>{formatTokens(avgEstimatedTokens)}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Avg/Run</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '18px', fontWeight: 'bold', color: heavySessions > 0 ? t.accentOrange : t.accentGreen }}>{heavySessions}</div>
+          <div style={{ fontSize: '9px', color: t.textMuted }}>Heavy Sessions</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -586,6 +585,11 @@ export default function Home() {
             { label: 'Max', value: formatDuration(metrics.maxDurationMs), color: t.accent, tooltip: 'Longest single run recorded' },
           ]} 
         />
+      </div>
+      
+      {/* Context Pressure */}
+      <div style={{ marginBottom: '12px' }}>
+        <ContextPressure metrics={metrics} theme={theme} />
       </div>
       
       {/* Charts Row 1: Tools + Models */}

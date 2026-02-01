@@ -5,6 +5,34 @@ import { join } from 'path';
 
 const LOG_DIR = '/tmp/clawdbot';
 
+// Estimated average tokens per tool output
+const TOOL_TOKEN_ESTIMATES = {
+  read: 1000,
+  web_fetch: 2000,
+  browser: 1000,
+  exec: 500,
+  process: 300,
+  web_search: 800,
+  memory_search: 400,
+  memory_get: 500,
+  image: 200,
+  write: 200,
+  edit: 200,
+  cron: 100,
+  message: 100,
+  gateway: 100,
+  sessions_list: 200,
+  sessions_history: 500,
+  sessions_send: 100,
+  session_status: 100,
+  nodes: 200,
+  canvas: 300,
+  tts: 50,
+  agents_list: 100,
+};
+
+const DEFAULT_TOOL_TOKENS = 300;
+
 /**
  * Parse a single log file and extract metrics
  */
@@ -22,6 +50,11 @@ function parseLogFile(filePath) {
   const providers = {};
   const channels = {};
   
+  // Context pressure tracking
+  let compactionCount = 0;
+  const compactionsBySession = new Map();
+  const compactionsByRun = new Map();
+  
   let lastToolByRun = new Map(); // Track last tool per run for chaining
   
   for (const line of lines) {
@@ -29,6 +62,20 @@ function parseLogFile(filePath) {
       const entry = JSON.parse(line);
       const message = entry['1'];
       const time = entry.time || entry._meta?.date;
+      
+      // Track compaction events
+      if (typeof message === 'string' && message.includes('compaction start:')) {
+        compactionCount++;
+        const runMatch = message.match(/runId=([a-f0-9-]+)/);
+        const sessionMatch = message.match(/sessionId=([a-f0-9-]+)/);
+        
+        if (runMatch) {
+          compactionsByRun.set(runMatch[1], (compactionsByRun.get(runMatch[1]) || 0) + 1);
+        }
+        if (sessionMatch) {
+          compactionsBySession.set(sessionMatch[1], (compactionsBySession.get(sessionMatch[1]) || 0) + 1);
+        }
+      }
       
       // Track run starts (to get model/provider/channel info)
       if (typeof message === 'string' && message.includes('embedded run start:')) {
@@ -62,6 +109,12 @@ function parseLogFile(filePath) {
         if (durationMatch) {
           const runId = runMatch?.[1];
           const startInfo = runStarts.get(runId) || {};
+          const toolsList = runTools.get(runId) || [];
+          
+          // Calculate estimated tokens for this run
+          const estimatedTokens = toolsList.reduce((sum, tool) => {
+            return sum + (TOOL_TOKEN_ESTIMATES[tool] || DEFAULT_TOOL_TOKENS);
+          }, 0);
           
           const run = {
             runId,
@@ -73,7 +126,9 @@ function parseLogFile(filePath) {
             provider: startInfo.provider || 'unknown',
             channel: startInfo.channel || 'unknown',
             thinking: startInfo.thinking || 'off',
-            tools: runTools.get(runId) || [],
+            tools: toolsList,
+            estimatedTokens,
+            compactions: compactionsByRun.get(runId) || 0,
           };
           
           runs.push(run);
@@ -132,6 +187,12 @@ function parseLogFile(filePath) {
   const maxDurationMs = Math.max(...durations, 0);
   const minDurationMs = runs.length > 0 ? Math.min(...durations) : 0;
   
+  // Calculate estimated tokens
+  const totalEstimatedTokens = runs.reduce((sum, r) => sum + (r.estimatedTokens || 0), 0);
+  
+  // Count heavy sessions (3+ compactions)
+  const heavySessions = [...compactionsBySession.values()].filter(c => c >= 3).length;
+  
   return {
     runs,
     tools,
@@ -146,6 +207,12 @@ function parseLogFile(filePath) {
     maxDurationMs,
     minDurationMs,
     abortedRuns: runs.filter(r => r.aborted).length,
+    // Context pressure metrics
+    compactionCount,
+    totalEstimatedTokens,
+    avgEstimatedTokens: runs.length > 0 ? totalEstimatedTokens / runs.length : 0,
+    heavySessions,
+    runsWithCompaction: runs.filter(r => r.compactions > 0).length,
   };
 }
 
@@ -195,6 +262,11 @@ function parseAllLogs(options = {}) {
     providers: {},
     channels: {},
     dailyMetrics,
+    // Context pressure
+    compactionCount: 0,
+    totalEstimatedTokens: 0,
+    heavySessions: 0,
+    runsWithCompaction: 0,
   };
   
   const allDurations = [];
@@ -204,6 +276,10 @@ function parseAllLogs(options = {}) {
     totals.totalDurationMs += metrics.totalDurationMs;
     totals.totalSessions += metrics.sessionCount;
     totals.abortedRuns += metrics.abortedRuns;
+    totals.compactionCount += metrics.compactionCount;
+    totals.totalEstimatedTokens += metrics.totalEstimatedTokens;
+    totals.heavySessions += metrics.heavySessions;
+    totals.runsWithCompaction += metrics.runsWithCompaction;
     
     // Aggregate durations for percentile calculations
     metrics.runs.forEach(r => allDurations.push(r.durationMs));
@@ -232,6 +308,9 @@ function parseAllLogs(options = {}) {
   totals.p95DurationMs = allDurations[Math.floor(allDurations.length * 0.95)] || 0;
   totals.maxDurationMs = allDurations[allDurations.length - 1] || 0;
   
+  // Calculate average estimated tokens
+  totals.avgEstimatedTokens = totals.totalRuns > 0 ? totals.totalEstimatedTokens / totals.totalRuns : 0;
+  
   return totals;
 }
 
@@ -243,6 +322,15 @@ function formatDuration(ms) {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${(ms / 60000).toFixed(1)}m`;
+}
+
+/**
+ * Format token count for display
+ */
+function formatTokens(tokens) {
+  if (!tokens || tokens === 0) return '0';
+  if (tokens < 1000) return String(Math.round(tokens));
+  return `${(tokens / 1000).toFixed(1)}K`;
 }
 
 /**
@@ -258,7 +346,7 @@ function printBar(label, value, max, width = 30) {
 const args = process.argv.slice(2);
 const command = args[0] || 'summary';
 
-if (command === 'summary' || command === 'daily' || command === 'tools' || command === 'models' || command === 'chains') {
+if (command === 'summary' || command === 'daily' || command === 'tools' || command === 'models' || command === 'chains' || command === 'context') {
   const metrics = parseAllLogs({ days: 30 });
   
   if (command === 'summary') {
@@ -271,6 +359,12 @@ if (command === 'summary' || command === 'daily' || command === 'tools' || comma
     console.log(`Max Duration:   ${formatDuration(metrics.maxDurationMs)}`);
     console.log(`Sessions:       ${metrics.totalSessions}`);
     console.log(`Aborted:        ${metrics.abortedRuns}`);
+    
+    console.log('\n📏 \x1b[1mContext Pressure:\x1b[0m');
+    console.log(`  Compactions:      ${metrics.compactionCount}`);
+    console.log(`  Est. Tokens:      ${formatTokens(metrics.totalEstimatedTokens)}`);
+    console.log(`  Avg Tokens/Run:   ${formatTokens(metrics.avgEstimatedTokens)}`);
+    console.log(`  Heavy Sessions:   ${metrics.heavySessions}`);
     
     console.log('\n🔧 \x1b[1mTop Tools:\x1b[0m');
     const sortedTools = Object.entries(metrics.tools)
@@ -311,11 +405,11 @@ if (command === 'summary' || command === 'daily' || command === 'tools' || comma
       .sort((a, b) => b[0].localeCompare(a[0]))
       .slice(0, 14);
     
-    console.log('  Date        Runs    Avg       Total     Sessions');
-    console.log('  ' + '-'.repeat(55));
+    console.log('  Date        Runs    Avg       Total     Compacts  Est.Tokens');
+    console.log('  ' + '-'.repeat(65));
     for (const [date, daily] of days) {
       const avg = daily.totalRuns > 0 ? daily.totalDurationMs / daily.totalRuns : 0;
-      console.log(`  ${date}    ${String(daily.totalRuns).padEnd(7)} ${formatDuration(avg).padEnd(9)} ${formatDuration(daily.totalDurationMs).padEnd(9)} ${daily.sessionCount}`);
+      console.log(`  ${date}    ${String(daily.totalRuns).padEnd(7)} ${formatDuration(avg).padEnd(9)} ${formatDuration(daily.totalDurationMs).padEnd(9)} ${String(daily.compactionCount).padEnd(9)} ${formatTokens(daily.totalEstimatedTokens)}`);
     }
     
   } else if (command === 'tools') {
@@ -344,6 +438,17 @@ if (command === 'summary' || command === 'daily' || command === 'tools' || comma
     for (const [chain, count] of sortedChains) {
       printBar(chain, count, maxCount, 30);
     }
+  } else if (command === 'context') {
+    console.log('\n📏 \x1b[1mContext Pressure Analysis\x1b[0m\n');
+    console.log(`Total Compactions:     ${metrics.compactionCount}`);
+    console.log(`Runs with Compaction:  ${metrics.runsWithCompaction} (${metrics.totalRuns > 0 ? ((metrics.runsWithCompaction / metrics.totalRuns) * 100).toFixed(1) : 0}%)`);
+    console.log(`Heavy Sessions:        ${metrics.heavySessions} (3+ compactions)`);
+    console.log('');
+    console.log(`Est. Tool Tokens:      ${formatTokens(metrics.totalEstimatedTokens)}`);
+    console.log(`Avg Tokens/Run:        ${formatTokens(metrics.avgEstimatedTokens)}`);
+    console.log('');
+    console.log('\x1b[2mNote: Token estimates based on average tool output sizes.\x1b[0m');
+    console.log('\x1b[2mCompaction indicates context window hit ~80% capacity.\x1b[0m');
   }
   
   console.log('');
@@ -360,6 +465,7 @@ Commands:
   tools     Show tool usage breakdown
   models    Show model usage breakdown
   chains    Show tool chain patterns
+  context   Show context pressure analysis
   help      Show this help
 
 Examples:
@@ -367,7 +473,8 @@ Examples:
   clawtrics daily        # Show last 14 days
   clawtrics tools        # Tool usage chart
   clawtrics chains       # Tool sequence patterns
+  clawtrics context      # Context pressure details
 `);
 }
 
-export { parseLogFile, getLogFiles, parseAllLogs };
+export { parseLogFile, getLogFiles, parseAllLogs, TOOL_TOKEN_ESTIMATES };
