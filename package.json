@@ -15,6 +15,14 @@
   "keywords": ["openclaw", "metrics", "dashboard", "ai", "tokens"],
   "author": "Finch",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/finchinslc/clawtrics.git"
+  },
+  "homepage": "https://github.com/finchinslc/clawtrics#readme",
+  "bugs": {
+    "url": "https://github.com/finchinslc/clawtrics/issues"
+  },
   "dependencies": {
     "next": "^15.0.0",
     "react": "^19.0.0",

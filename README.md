@@ -2,7 +2,20 @@
 
 Metrics dashboard for OpenClaw — track run durations, tool usage, models, channels, and more.
 
+[![GitHub release](https://img.shields.io/github/release/finchinslc/clawtrics.svg)](https://github.com/finchinslc/clawtrics/releases)
+
 ![Clawtrics Dashboard](screenshot.png)
+
+## 🆕 What's New in v0.2.0
+
+- **📱 Mobile-friendly responsive design** — works great on phones and tablets
+- **🔍 Session Deep-Dive** — click any session to see full run timeline
+- **🧠 Thinking Mode breakdown** — distribution and avg duration per reasoning level
+- **⚠️ Error tracking** — categorized error counts with top error types
+- **📡 Real-time updates** — SSE streaming replaces polling for instant updates
+- **📊 Context Pressure metrics** — compaction tracking, token estimates, heavy sessions
+
+See [CHANGELOG.md](./CHANGELOG.md) for complete version history.
 
 ## Features
 
