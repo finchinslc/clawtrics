@@ -14,11 +14,15 @@ function parseLogFile(filePath) {
   
   const runs = [];
   const runStarts = new Map(); // Track run starts to match with completions
+  const runTools = new Map(); // Track tools per run for chain analysis
   const tools = {};
+  const toolChains = {};
   const sessions = new Set();
   const models = {};
   const providers = {};
   const channels = {};
+  
+  let lastToolByRun = new Map(); // Track last tool per run for chaining
   
   for (const line of lines) {
     try {
@@ -44,6 +48,7 @@ function parseLogFile(filePath) {
             thinking: thinkingMatch?.[1] || 'off',
             startTime: time,
           });
+          runTools.set(runMatch[1], []);
         }
       }
       
@@ -68,6 +73,7 @@ function parseLogFile(filePath) {
             provider: startInfo.provider || 'unknown',
             channel: startInfo.channel || 'unknown',
             thinking: startInfo.thinking || 'off',
+            tools: runTools.get(runId) || [],
           };
           
           runs.push(run);
@@ -80,15 +86,37 @@ function parseLogFile(filePath) {
           models[run.model] = (models[run.model] || 0) + 1;
           providers[run.provider] = (providers[run.provider] || 0) + 1;
           channels[run.channel] = (channels[run.channel] || 0) + 1;
+          
+          // Clean up tracking
+          lastToolByRun.delete(runId);
         }
       }
       
       // Track tool usage
       if (typeof message === 'string' && message.includes('embedded run tool start:')) {
         const toolMatch = message.match(/tool=(\w+)/);
+        const runMatch = message.match(/runId=([a-f0-9-]+)/);
+        
         if (toolMatch) {
           const tool = toolMatch[1];
+          const runId = runMatch?.[1];
+          
           tools[tool] = (tools[tool] || 0) + 1;
+          
+          // Track tools per run
+          if (runId && runTools.has(runId)) {
+            runTools.get(runId).push(tool);
+          }
+          
+          // Track tool chains (A → B)
+          if (runId) {
+            const lastTool = lastToolByRun.get(runId);
+            if (lastTool && lastTool !== tool) {
+              const chain = `${lastTool}→${tool}`;
+              toolChains[chain] = (toolChains[chain] || 0) + 1;
+            }
+            lastToolByRun.set(runId, tool);
+          }
         }
       }
       
@@ -107,6 +135,7 @@ function parseLogFile(filePath) {
   return {
     runs,
     tools,
+    toolChains,
     models,
     providers,
     channels,
@@ -161,6 +190,7 @@ function parseAllLogs(options = {}) {
     totalSessions: 0,
     abortedRuns: 0,
     tools: {},
+    toolChains: {},
     models: {},
     providers: {},
     channels: {},
@@ -180,6 +210,9 @@ function parseAllLogs(options = {}) {
     
     for (const [tool, count] of Object.entries(metrics.tools)) {
       totals.tools[tool] = (totals.tools[tool] || 0) + count;
+    }
+    for (const [chain, count] of Object.entries(metrics.toolChains)) {
+      totals.toolChains[chain] = (totals.toolChains[chain] || 0) + count;
     }
     for (const [model, count] of Object.entries(metrics.models)) {
       totals.models[model] = (totals.models[model] || 0) + count;
@@ -225,7 +258,7 @@ function printBar(label, value, max, width = 30) {
 const args = process.argv.slice(2);
 const command = args[0] || 'summary';
 
-if (command === 'summary' || command === 'daily' || command === 'tools' || command === 'models') {
+if (command === 'summary' || command === 'daily' || command === 'tools' || command === 'models' || command === 'chains') {
   const metrics = parseAllLogs({ days: 30 });
   
   if (command === 'summary') {
@@ -264,6 +297,14 @@ if (command === 'summary' || command === 'daily' || command === 'tools' || comma
       printBar(channel, count, maxChannelCount);
     }
     
+    console.log('\n🔗 \x1b[1mTop Tool Chains:\x1b[0m');
+    const sortedChains = Object.entries(metrics.toolChains)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    for (const [chain, count] of sortedChains) {
+      console.log(`  ${chain.padEnd(20)} ${count}`);
+    }
+    
   } else if (command === 'daily') {
     console.log('\n📅 \x1b[1mDaily Breakdown\x1b[0m\n');
     const days = Object.entries(metrics.dailyMetrics)
@@ -294,6 +335,15 @@ if (command === 'summary' || command === 'daily' || command === 'tools' || comma
     for (const [model, count] of sortedModels) {
       printBar(model, count, maxCount, 40);
     }
+    
+  } else if (command === 'chains') {
+    console.log('\n🔗 \x1b[1mTool Chains\x1b[0m\n');
+    const sortedChains = Object.entries(metrics.toolChains)
+      .sort((a, b) => b[1] - a[1]);
+    const maxCount = sortedChains[0]?.[1] || 1;
+    for (const [chain, count] of sortedChains) {
+      printBar(chain, count, maxCount, 30);
+    }
   }
   
   console.log('');
@@ -309,12 +359,14 @@ Commands:
   daily     Show daily breakdown
   tools     Show tool usage breakdown
   models    Show model usage breakdown
+  chains    Show tool chain patterns
   help      Show this help
 
 Examples:
   clawtrics              # Show summary
   clawtrics daily        # Show last 14 days
   clawtrics tools        # Tool usage chart
+  clawtrics chains       # Tool sequence patterns
 `);
 }
 
