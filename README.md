@@ -18,8 +18,21 @@ Metrics dashboard for OpenClaw — track run durations, tool usage, models, chan
 
 ## Quick Start
 
+### Docker (recommended)
+
 ```bash
-# Clone and install
+git clone https://github.com/finchinslc/clawtrics.git
+cd clawtrics
+docker compose up -d
+
+# Open http://localhost:3001
+```
+
+The container mounts `/tmp/clawdbot` (read-only) to access OpenClaw logs.
+
+### Local Development
+
+```bash
 git clone https://github.com/finchinslc/clawtrics.git
 cd clawtrics
 npm install
