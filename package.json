@@ -1,0 +1,26 @@
+{
+  "name": "clawtrics",
+  "version": "0.1.0",
+  "description": "Metrics dashboard for OpenClaw - track token usage, speed, and performance",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "parse": "node src/parser/index.js"
+  },
+  "keywords": ["openclaw", "metrics", "dashboard", "ai", "tokens"],
+  "author": "Finch",
+  "license": "MIT",
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}
