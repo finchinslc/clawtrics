@@ -1,0 +1,39 @@
+{
+  "name": "clawtrics-installer",
+  "version": "0.1.0",
+  "description": "TUI installer for Clawtrics",
+  "type": "module",
+  "bin": {
+    "clawtrics": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "openclaw",
+    "clawtrics",
+    "metrics",
+    "dashboard",
+    "installer"
+  ],
+  "author": "finchinslc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/finchinslc/clawtrics.git"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

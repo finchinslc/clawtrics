@@ -8,17 +8,31 @@ Metrics dashboard for OpenClaw — track run durations, tool usage, models, chan
 
 - **Run metrics**: Total runs, duration, sessions, abort rate
 - **Duration percentiles**: Average, P50, P95, Max
+- **Context pressure**: Compaction tracking, estimated tokens
+- **Thinking mode breakdown**: Distribution of reasoning levels (off/low/medium/high)
+- **Error tracking**: Categorized error counts (exec failures, auth errors, etc.)
 - **Tool usage**: Bar chart of most-used tools
 - **Model breakdown**: Which AI models you're using
 - **Channel stats**: Discord, webchat, heartbeat, etc.
-- **Provider stats**: API providers (github-copilot, anthropic, etc.)
-- **Daily activity**: 14-day activity chart
-- **Auto-refresh**: Dashboard updates every 30 seconds
+- **Session deep-dive**: Click any session to see full timeline
+- **Real-time updates**: SSE-based live dashboard (no polling)
 - **CLI companion**: Terminal-based metrics
 
 ## Quick Start
 
-### Docker (recommended)
+### One-Line Install (recommended)
+
+```bash
+npx clawtrics-installer
+```
+
+This will:
+- Check prerequisites (Docker, Git)
+- Clone and configure the dashboard  
+- Build and start the Docker container
+- Set up auto-start on boot (optional, macOS)
+
+### Manual (Docker)
 
 ```bash
 git clone https://github.com/finchinslc/clawtrics.git
@@ -28,7 +42,19 @@ docker compose up -d
 # Open http://localhost:3001
 ```
 
-The container mounts `/tmp/clawdbot` (read-only) to access OpenClaw logs.
+The container mounts `/tmp/clawdbot` and `/tmp/openclaw` (read-only) to access OpenClaw logs.
+
+## Managing the Dashboard
+
+```bash
+npx clawtrics-installer status   # Check if running
+npx clawtrics-installer start    # Start the dashboard
+npx clawtrics-installer stop     # Stop the dashboard
+npx clawtrics-installer restart  # Restart
+npx clawtrics-installer logs     # View container logs
+npx clawtrics-installer open     # Open in browser
+npx clawtrics-installer update   # Pull latest & rebuild
+```
 
 ### Local Development
 
