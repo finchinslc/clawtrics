@@ -5,7 +5,7 @@ A terminal UI installer for [Clawtrics](https://github.com/finchinslc/clawtrics)
 ## Quick Start
 
 ```bash
-npx clawtrics-installer
+npx clawtrics
 ```
 
 This will:
@@ -18,13 +18,13 @@ This will:
 After installation, use these commands:
 
 ```bash
-npx clawtrics-installer status   # Check if running
-npx clawtrics-installer start    # Start the dashboard
-npx clawtrics-installer stop     # Stop the dashboard
-npx clawtrics-installer restart  # Restart
-npx clawtrics-installer logs     # View logs
-npx clawtrics-installer open     # Open in browser
-npx clawtrics-installer update   # Pull latest & rebuild
+npx clawtrics status   # Check if running
+npx clawtrics start    # Start the dashboard
+npx clawtrics stop     # Stop the dashboard
+npx clawtrics restart  # Restart
+npx clawtrics logs     # View logs
+npx clawtrics open     # Open in browser
+npx clawtrics update   # Pull latest & rebuild
 ```
 
 ## What Gets Installed
