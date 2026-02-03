@@ -150,7 +150,44 @@ function extractBaseCommand(cmdString) {
  * Parse a single log file and extract metrics
  */
 function parseLogFile(filePath) {
-  const content = readFileSync(filePath, 'utf-8');
+  let content;
+  try {
+    content = readFileSync(filePath, 'utf-8');
+    
+    // Safety check: if file is too large (>100MB), only read last portion
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (content.length > maxSize) {
+      console.warn(`Warning: ${filePath} is very large (${(content.length / 1024 / 1024).toFixed(1)}MB), truncating to last ${maxSize / 1024 / 1024}MB`);
+      content = content.slice(-maxSize);
+    }
+  } catch (e) {
+    console.error(`Error reading ${filePath}:`, e.message);
+    return {
+      runs: [],
+      tools: {},
+      toolChains: {},
+      shellCommands: {},
+      models: {},
+      providers: {},
+      channels: {},
+      thinkingModes: {},
+      thinkingAvgDurations: {},
+      sessionCount: 0,
+      totalRuns: 0,
+      totalDurationMs: 0,
+      avgDurationMs: 0,
+      maxDurationMs: 0,
+      minDurationMs: 0,
+      abortedRuns: 0,
+      compactionCount: 0,
+      totalEstimatedTokens: 0,
+      avgEstimatedTokens: 0,
+      heavySessions: 0,
+      runsWithCompaction: 0,
+      errors: { total: 0, byType: {} },
+    };
+  }
+  
   const lines = content.trim().split('\n').filter(Boolean);
   
   const runs = [];
@@ -420,8 +457,9 @@ function getLogFiles() {
  * Parse all logs and aggregate metrics
  */
 function parseAllLogs(options = {}) {
-  const { days = 30 } = options;
-  const files = getLogFiles().slice(0, days * 2); // Get more files since we have 2 sources
+  const { days = 30, maxFiles = 60 } = options;
+  const allFiles = getLogFiles();
+  const files = allFiles.slice(0, Math.min(maxFiles, days * 2)); // Limit total files processed
   const dailyMetrics = {};
   const seenDates = new Set();
   
