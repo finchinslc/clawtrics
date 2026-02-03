@@ -1,6 +1,6 @@
 {
   "name": "clawtrics",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Metrics dashboard for OpenClaw - track run durations, tool usage, models, and more",
   "type": "module",
   "bin": {
@@ -12,7 +12,13 @@
     "start": "next start",
     "cli": "node src/parser/index.js"
   },
-  "keywords": ["openclaw", "metrics", "dashboard", "ai", "tokens"],
+  "keywords": [
+    "openclaw",
+    "metrics",
+    "dashboard",
+    "ai",
+    "tokens"
+  ],
   "author": "Finch",
   "license": "MIT",
   "repository": {
